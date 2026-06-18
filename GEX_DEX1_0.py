@@ -1,3 +1,23 @@
+"""
+VERSIONE 1.0 - EOGA GEX/DEX ENGINE
+-------------------------------------------------------------------------
+MOTORE DI ANALISI:
+1. GEX (Gamma Exposure) Dinamico: Implementa un motore vettoriale 
+   basato su matrici NumPy per la simulazione Black-Scholes a 200 tick 
+   di prezzo. Identifica l'HVL (Gamma Flip) reale attraverso il root-finding 
+   sullo zero matematico (0.0), superando l'approssimazione statica.
+   
+2. ARCHITETTURA: 
+   - Utilizzo di calcolo parallelo (broadcasting) per simulare 
+     dinamicamente la sensibilità delle opzioni (Greeks) su 5.000+ strike.
+   - UI ottimizzata con visualizzazione gerarchica per la leggibilità dei livelli.
+
+3. DEX (Delta Exposure): 
+   - Attualmente in modalità di visualizzazione statica (Versione 1.0). 
+   - Pianificata integrazione dinamica (DEX Velocity & Vanna) per la V 2.0.
+-------------------------------------------------------------------------
+"""
+
 import calendar
 import datetime
 import pytz
@@ -264,6 +284,10 @@ stato_mercato = verifica_stato_mercato()
 tz_it = pytz.timezone('Europe/Rome')
 ora_it = datetime.datetime.now(tz_it).strftime("%d %b %Y - %H:%M IT")
 
+# 1. Calcolo dell'orario di New York (EST/EDT) per la zona evidenziata in blu
+tz_est = pytz.timezone('America/New_York')
+ora_est = datetime.datetime.now(tz_est).strftime("%d %b %Y - %H:%M NY")
+
 etf_realtime_nasdaq = scarica_quote_nasdaq(ticker)
 if etf_realtime_nasdaq is None: etf_realtime_nasdaq = spot_price_reale 
 
@@ -286,12 +310,23 @@ if pagina == "📊 Dashboard Grafica (GEX)":
     status_color = "#00E676" if "APERTO" in stato_mercato else "#FF3B30"
     stato_pulito = stato_mercato.replace('🟢', '').replace('🔴', '').strip()
     
+    # Calcolo dinamico della variazione % rispetto alla chiusura per la zona evidenziata in rosso
+    if prezzo_chiusura > 0:
+        var_pct_etf = ((valore_etf - prezzo_chiusura) / prezzo_chiusura) * 100
+    else:
+        var_pct_etf = 0.0
+        
+    colore_var = "#00E676" if var_pct_etf >= 0 else "#FF3B30"
+    segno_var = "+" if var_pct_etf >= 0 else ""
+    testo_var = f"{segno_var}{var_pct_etf:.2f}%"
+
+    # HTML TOP BAR - AGGIORNATO CON CHG % E DOPPIO ORARIO
     top_bar_html = f"""<div style="display: flex; justify-content: space-between; align-items: center; background: linear-gradient(145deg, #1A1D24 0%, #131722 100%); padding: 20px 30px; border-radius: 12px; border: 1px solid #2B3139; box-shadow: 0px 8px 20px rgba(0,0,0,0.4); margin-bottom: 25px;">
     <div style="flex: 1;">
         <h1 style="margin: 0; color: #E0E3EB; font-size: 28px; font-family: 'Arial Black', sans-serif; text-transform: uppercase; letter-spacing: 1.5px;">🎯 EOGA <span style="color: #FFD700;">GEX</span></h1>
         <span style="color: #8C92A4; font-size: 13px; text-transform: uppercase; letter-spacing: 2px;">Advanced Order Book</span>
     </div>
-    <div style="display: flex; gap: 40px; align-items: center; justify-content: center; flex: 2;">
+    <div style="display: flex; gap: 35px; align-items: center; justify-content: center; flex: 2.5;">
         <div style="text-align: right;">
             <span style="color: #8C92A4; font-size: 12px; text-transform: uppercase; font-weight: 600; letter-spacing: 1px;">{ticker} (Spot)</span><br>
             <span style="color: #FFFFFF; font-size: 34px; font-weight: 900; font-family: 'Courier New', monospace; text-shadow: 0 0 10px rgba(255,255,255,0.1);">${valore_etf:,.2f}</span>
@@ -301,13 +336,19 @@ if pagina == "📊 Dashboard Grafica (GEX)":
             <span style="color: #8C92A4; font-size: 12px; text-transform: uppercase; font-weight: 600; letter-spacing: 1px;">{nome_future} (Future)</span><br>
             <span style="color: #FFFFFF; font-size: 34px; font-weight: 900; font-family: 'Courier New', monospace; text-shadow: 0 0 10px rgba(255,255,255,0.1);">{valore_fut:,.2f}</span>
         </div>
+        <div style="height: 50px; width: 2px; background: linear-gradient(to bottom, transparent, #3A414D, transparent);"></div>
+        <div style="text-align: left;">
+            <span style="color: #8C92A4; font-size: 12px; text-transform: uppercase; font-weight: 600; letter-spacing: 1px;">{ticker} Chg %</span><br>
+            <span style="color: {colore_var}; font-size: 34px; font-weight: 900; font-family: 'Courier New', monospace; text-shadow: 0 0 10px {colore_var}20;">{testo_var}</span>
+        </div>
     </div>
     <div style="flex: 1; text-align: right;">
-        <div style="display: inline-flex; align-items: center; gap: 10px; background-color: rgba(255,255,255,0.03); padding: 8px 15px; border-radius: 30px; border: 1px solid rgba(255,255,255,0.08);">
+        <div style="display: inline-flex; align-items: center; gap: 10px; background-color: rgba(255,255,255,0.03); padding: 8px 15px; border-radius: 30px; border: 1px solid rgba(255,255,255,0.08); margin-bottom: 4px;">
             <div style="width: 10px; height: 10px; border-radius: 50%; background-color: {status_color}; box-shadow: 0 0 8px {status_color};"></div>
             <span style="color: #E0E3EB; font-weight: bold; font-size: 14px; letter-spacing: 1px;">{stato_pulito}</span>
         </div>
-        <div style="margin-top: 8px; color: #8C92A4; font-size: 12px; font-family: monospace;">{ora_it}</div>
+        <div style="color: #8C92A4; font-size: 12px; font-family: monospace; line-height: 1.3;">{ora_it}</div>
+        <div style="color: #53B9EA; font-size: 12px; font-family: monospace; font-weight: bold; line-height: 1.3;">{ora_est}</div>
     </div>
 </div>"""
     st.markdown(top_bar_html, unsafe_allow_html=True)
@@ -318,13 +359,25 @@ if pagina == "📊 Dashboard Grafica (GEX)":
         usa_total_gex = st.checkbox("🌐 Calcola Total GEX (Aggregato)", value=False)
         scadenza_sel = st.selectbox("Scadenza Singola:", scadenze_disponibili, disabled=usa_total_gex)
     with col_f2:
-        filtro_percentuale = st.slider("Zoom Grafico (+/- % dal prezzo)", min_value=1, max_value=20, value=3)
+        filtro_percentuale = st.slider("Zoom Grafico (+/- % dal prezzo)", min_value=1, max_value=20, value=1)
     with col_f3:
         tipo_visualizzazione = st.radio("Visualizza Istogramma:", ["GEX (Gamma)", "DEX (Delta)"], horizontal=True)
+    
     with col_f4:
         st.markdown("<br>", unsafe_allow_html=True)
         mostra_etf = st.checkbox(f"🔄 Mostra livelli in {ticker}", value=False)
-    
+
+    # --- PANNELLO INFORMATIVO E TOGGLE MOTORE HVL ---
+    st.markdown("<br>", unsafe_allow_html=True)
+    with st.expander("🔬 Info Motore HVL (Gamma Flip) & Attivazione Metodo Istituzionale"):
+        st.markdown("""
+        **1. Metodo Base (Approssimazione Cumulativa):** È un calcolo "statico". Stima il baricentro dell'Order Book facendo una somma cumulativa dell'esposizione GEX limitatamente al prezzo *attuale*. È rapido per il processore, ma ignora la convessità delle opzioni se il prezzo dovesse spostarsi.
+        
+        **2. Metodo Istituzionale (Simulazione Dinamica Vettoriale):** Crea una matrice di 200 scenari di prezzo simulati da -10% a +10%. Attraverso il *broadcasting* di NumPy, ricalcola simultaneamente l'equazione di Black-Scholes per *tutte* le migliaia di opzioni a mercato ad ogni tick simulato. Identifica il vero *Zero Gamma Level* cercando l'esatto punto in cui la curva dinamica incrocia lo zero:
+        Total GEX(S) = Somma( OI_Call * Gamma_Call(S) - OI_Put * Gamma_Put(S) ) * S^2 * 0.01 = 0
+        """)
+        usa_hvl_istituzionale = st.checkbox("⚙️ Attiva Calcolo HVL Istituzionale (Richiede maggiore potenza di calcolo)", value=False)
+
     vix_live, vxn_live = get_vix_data()
     iv_stimata = vix_live / 100.0
     st.info(f"⚙️ Motore Greche alimentato da VIX Live: {vix_live:.2f}% (Rif. VXN: {vxn_live:.2f}%)")
@@ -358,7 +411,8 @@ if pagina == "📊 Dashboard Grafica (GEX)":
                     "Strike_ETF": K, "Strike_Future": K * ratio_esatto, 
                     "GEX": gamma_c * oi_call * 100 * (spot_price_reale**2) * 0.01, 
                     "DEX": d_c * oi_call * 100 * spot_price_reale * 0.01,
-                    "Call_OI": oi_call, "Put_OI": 0
+                    "Call_OI": oi_call, "Put_OI": 0,
+                    "t_anno": t_anno # <--- DATO AGGIUNTO PER LA MATRICE
                 })
                 
             if oi_put > 0:
@@ -367,7 +421,8 @@ if pagina == "📊 Dashboard Grafica (GEX)":
                     "Strike_ETF": K, "Strike_Future": K * ratio_esatto, 
                     "GEX": -gamma_p * oi_put * 100 * (spot_price_reale**2) * 0.01, 
                     "DEX": d_p * oi_put * 100 * spot_price_reale * 0.01,
-                    "Call_OI": 0, "Put_OI": oi_put
+                    "Call_OI": 0, "Put_OI": oi_put,
+                    "t_anno": t_anno # <--- DATO AGGIUNTO PER LA MATRICE
                 })
 
     import pandas as pd
@@ -394,18 +449,58 @@ if pagina == "📊 Dashboard Grafica (GEX)":
     call_wall = df_utile.loc[df_utile["GEX"].idxmax()][colonna_y]
     put_wall = df_utile.loc[df_utile["GEX"].idxmin()][colonna_y]
 
-    df_utile["GEX_Cum"] = df_utile["GEX"].cumsum()
-    idx_flip = np.where(np.diff(np.sign(df_utile["GEX_Cum"])) != 0)[0]
-    
-    if len(idx_flip) > 0:
-        indice_sotto = idx_flip[0]
-        indice_sopra = indice_sotto + 1
-        if indice_sopra < len(df_utile):
-            gamma_flip = (df_utile.iloc[indice_sotto][colonna_y] + df_utile.iloc[indice_sopra][colonna_y]) / 2.0
+    # ==========================================
+    # CALCOLO HVL (FLIP POINT) - DOPPIO MOTORE
+    # ==========================================
+    if usa_hvl_istituzionale:
+        # MOTORE VETTORIALE NUMPY (Simulazione Dinamica Istituzionale)
+        spot_simulati = np.linspace(spot_riferimento * 0.9, spot_riferimento * 1.1, 200)
+        strikes = df_raw[colonna_y].values
+        oi_calls = df_raw["Call_OI"].values
+        oi_puts = df_raw["Put_OI"].values
+        t_annos = df_raw["t_anno"].values
+        
+        # 1. Creazione Matrici per Broadcasting
+        S = spot_simulati[:, np.newaxis]
+        K = strikes[np.newaxis, :]
+        T = t_annos[np.newaxis, :]
+        
+        # 2. Ricalcolo Vettorializzato di Black-Scholes
+        sigma_sqrt_t = iv_stimata * np.sqrt(T)
+        sigma_sqrt_t = np.where(sigma_sqrt_t == 0, 1e-9, sigma_sqrt_t) # Previene errori di divisione
+        
+        d1 = (np.log(S / K) + (0.045 + (iv_stimata**2) / 2) * T) / sigma_sqrt_t
+        n_prime_d1 = (1.0 / np.sqrt(2 * np.pi)) * np.exp(-0.5 * (d1**2))
+        gamma_matrice = n_prime_d1 / (S * sigma_sqrt_t)
+        
+        # 3. Bilancio totale simulato per ogni tick di prezzo
+        gex_totale_simulato = np.sum(gamma_matrice * oi_calls * (S**2) - gamma_matrice * oi_puts * (S**2), axis=1)
+        
+        # 4. Ricerca del Root (attraversamento dello zero matematico)
+        cambi_segno = np.where(np.diff(np.sign(gex_totale_simulato)))[0]
+        if len(cambi_segno) > 0:
+            idx = cambi_segno[0]
+            # Interpolazione lineare tra i due tick per precisione sub-decimale
+            s1, s2 = spot_simulati[idx], spot_simulati[idx+1]
+            g1, g2 = gex_totale_simulato[idx], gex_totale_simulato[idx+1]
+            gamma_flip = s1 - g1 * ((s2 - s1) / (g2 - g1)) 
         else:
-            gamma_flip = df_utile.iloc[indice_sotto][colonna_y]
+            # Fallback se la curva non incrocia mai lo zero
+            gamma_flip = spot_simulati[np.argmin(np.abs(gex_totale_simulato))]
     else:
-        gamma_flip = df_utile.loc[df_utile["GEX_Cum"].abs().idxmin()][colonna_y]
+        # MOTORE STATICO (Approssimazione Cumulativa Base)
+        df_utile["GEX_Cum"] = df_utile["GEX"].cumsum()
+        idx_flip = np.where(np.diff(np.sign(df_utile["GEX_Cum"])) != 0)[0]
+        
+        if len(idx_flip) > 0:
+            indice_sotto = idx_flip[0]
+            indice_sopra = indice_sotto + 1
+            if indice_sopra < len(df_utile):
+                gamma_flip = (df_utile.iloc[indice_sotto][colonna_y] + df_utile.iloc[indice_sopra][colonna_y]) / 2.0
+            else:
+                gamma_flip = df_utile.iloc[indice_sotto][colonna_y]
+        else:
+            gamma_flip = df_utile.loc[df_utile["GEX_Cum"].abs().idxmin()][colonna_y]
 
     metric_col = "GEX" if tipo_visualizzazione == "GEX (Gamma)" else "DEX"
     df_utile["Colore"] = np.where(df_utile[metric_col] >= 0, "#32CD32", "#FF3B30")
@@ -421,6 +516,7 @@ if pagina == "📊 Dashboard Grafica (GEX)":
     c3.metric(f"🔴 PUT WALL {nome_asset}", f"{put_wall:.0f}")
     c4.metric("⚖️ P/C RATIO (OI)", f"{pcr_oi:.2f}")
     
+    
     # --- RENDERIZZAZIONE GRAFICO PLOTLY PULITO ---
     soglia_visibilita = df_utile[metric_col].abs().max() * 0.15
     
@@ -431,14 +527,18 @@ if pagina == "📊 Dashboard Grafica (GEX)":
     for index, row in df_utile.iterrows():
         val_y = row[colonna_y]
         val_x = row[metric_col]
+        
+        # Livelli Master e barre con grandi volumi (> 15% del picco): GRASSETTO NERO
         if val_y in [call_wall, put_wall] or abs(val_x) >= soglia_visibilita:
             testi_barre.append(f"<b>{int(round(val_y))}</b>")
-            dimensioni_testo.append(13)
+            dimensioni_testo.append(14)
             colori_testo.append("black")
+            
+        # Livelli Minori: TESTO NORMALE E GRIGIO (così li vedi ma non creano confusione)
         else:
-            testi_barre.append("")
-            dimensioni_testo.append(0)
-            colori_testo.append("transparent")
+            testi_barre.append(f"{int(round(val_y))}")
+            dimensioni_testo.append(11) 
+            colori_testo.append("#555555") # Grigio scuro
 
     fig = go.Figure()
     
@@ -453,10 +553,55 @@ if pagina == "📊 Dashboard Grafica (GEX)":
         cliponaxis=False
     ))
 
+# =====================================================================
+    # 3. LINEE ORIZZONTALI E ETICHETTE DI SICUREZZA ANTI-SOVRAPPOSIZIONE
+    # =====================================================================
+    
+    # Tracciamento linee base (sotto il grafico)
     fig.add_hline(y=gamma_flip, line_dash="solid", line_color="#FFB300", line_width=3, layer="below")
     fig.add_hline(y=call_wall, line_dash="dash", line_color="#32CD32", line_width=2, layer="below")
     fig.add_hline(y=put_wall, line_dash="dash", line_color="#FF3B30", line_width=2, layer="below")
     fig.add_hline(y=spot_riferimento, line_color="#00FFFF", line_width=2, layer="below")
+
+    # --- ETICHETTE LATO DESTRO (Ancorate al margine destro del grafico) ---
+    
+    # CALL WALL - Scritta sopra la linea tratteggiata verde
+    fig.add_annotation(
+        x=1, y=call_wall, xref="paper", yref="y",
+        text=f" 🟢 <b>CALL WALL: {int(round(call_wall))}</b> ",
+        showarrow=False, xanchor="right", yanchor="bottom",
+        font=dict(size=12, color="black", family="Arial Black"),
+        bgcolor="rgba(245, 255, 245, 0.95)", bordercolor="#32CD32", borderwidth=1, borderpad=4
+    )
+
+    # PUT WALL - Scritta sotto la linea tratteggiata rossa
+    fig.add_annotation(
+        x=1, y=put_wall, xref="paper", yref="y",
+        text=f" 🔴 <b>PUT WALL: {int(round(put_wall))}</b> ",
+        showarrow=False, xanchor="right", yanchor="top",
+        font=dict(size=12, color="black", family="Arial Black"),
+        bgcolor="rgba(255, 245, 245, 0.95)", bordercolor="#FF3B30", borderwidth=1, borderpad=4
+    )
+
+    # --- ETICHETTE LATO SINISTRO (Ancorate al margine sinistro del grafico) ---
+    
+    # HVL FLIP POINT - Scritta sopra la linea continua gialla
+    fig.add_annotation(
+        x=0, y=gamma_flip, xref="paper", yref="y",
+        text=f" 🟡 <b>HVL FLIP: {gamma_flip:.2f}</b> ",
+        showarrow=False, xanchor="left", yanchor="bottom",
+        font=dict(size=12, color="black", family="Arial Black"),
+        bgcolor="rgba(255, 255, 240, 0.95)", bordercolor="#FFB300", borderwidth=1, borderpad=4
+    )
+
+    # PREZZO SPOT LIVE - Scritta sotto la linea continua azzurra
+    fig.add_annotation(
+        x=0, y=spot_riferimento, xref="paper", yref="y",
+        text=f" 🔵 <b>SPOT LIVE: {spot_riferimento:.2f}</b> ",
+        showarrow=False, xanchor="left", yanchor="top",
+        font=dict(size=12, color="black", family="Arial Black"),
+        bgcolor="rgba(240, 255, 255, 0.95)", bordercolor="#00FFFF", borderwidth=1, borderpad=4
+    )
 
     fig.update_layout(
         height=800, 
