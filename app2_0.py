@@ -474,11 +474,12 @@ if pagina == "📊 Dashboard Grafica (GEX)":
     metric_col = "GEX" if tipo_visualizzazione == "GEX (Gamma)" else "DEX"
     df_utile["Colore"] = np.where(df_utile[metric_col] >= 0, "#32CD32", "#FF3B30")
 
+    
     # ==========================================
     # CALCOLO PUT/CALL RATIO E METRICHE
     # ==========================================
-    tot_call_oi = df_nasdaq_grafico['c_Openinterest'].sum()
-    tot_put_oi = df_nasdaq_grafico['p_Openinterest'].sum()
+    tot_call_oi = df_raw['Call_OI'].sum()
+    tot_put_oi = df_raw['Put_OI'].sum()
     pcr_oi = tot_put_oi / tot_call_oi if tot_call_oi > 0 else 0.0
 
     # ==========================================
