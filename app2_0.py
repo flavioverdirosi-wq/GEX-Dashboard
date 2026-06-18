@@ -489,8 +489,8 @@ if pagina == "📊 Dashboard Grafica (GEX)":
     min_put_val = df_utile[metric_col].min()
     
     soglia_call = max_call_val * 0.5
-    soglia_put = min_put_val * 0.5 # Valore negativo: es. se il picco è -1B, la soglia è -0.5B
-
+    soglia_put = min_put_val * 0.5
+    
     testi_barre = []
     dimensioni_testo = []
     colori_testo = []
@@ -516,11 +516,11 @@ if pagina == "📊 Dashboard Grafica (GEX)":
             colori_testo.append("black")
         # Livelli "Rumore" (< 50%)
         else:
-            testi_barre.append(f"{val_round}") # Senza grassetto
+            testi_barre.append(f"{val_round}")
             dimensioni_testo.append(11)
-            colori_testo.append("#95A5A6") # Grigio per sbiadire sullo sfondo
+            colori_testo.append("#95A5A6")
 
-   fig = go.Figure()
+    fig = go.Figure()
     
     # 2. Renderizziamo le barre
     fig.add_trace(go.Bar(
@@ -534,19 +534,19 @@ if pagina == "📊 Dashboard Grafica (GEX)":
         cliponaxis=False
     ))
 
-    # 3. Linee Orizzontali: Pulizia delle ridondanze!
+    # 3. Linee Orizzontali
     
-    # HVL mediatrice -> Etichetta a Sinistra (con spazi per distanziarla dall'asse)
+    # HVL mediatrice -> Etichetta a Sinistra
     fig.add_hline(y=gamma_flip, line_dash="solid", line_color="#FFB300", line_width=3, layer="below",
                   annotation_text=f"   <b>HVL: {gamma_flip:.2f}</b>", 
                   annotation_font_size=13, annotation_font_color="black",
                   annotation_bgcolor="#FFF3E0", annotation_bordercolor="#FFB300", annotation_borderpad=3,
                   annotation_position="top left")
     
-    # Call Wall -> SOLO LINEA TRATTEGGIATA (il testo è già stampato dalla barra)
+    # Call Wall -> SOLO LINEA TRATTEGGIATA
     fig.add_hline(y=call_wall, line_dash="dash", line_color="#32CD32", line_width=2, layer="below")
                   
-    # Put Wall -> SOLO LINEA TRATTEGGIATA (il testo è già stampato dalla barra)
+    # Put Wall -> SOLO LINEA TRATTEGGIATA
     fig.add_hline(y=put_wall, line_dash="dash", line_color="#FF3B30", line_width=2, layer="below")
                   
     # Prezzo Spot Live -> Etichetta a Destra
@@ -556,7 +556,7 @@ if pagina == "📊 Dashboard Grafica (GEX)":
                   annotation_bgcolor="#E0FFFF", annotation_bordercolor="#00FFFF", annotation_borderpad=3,
                   annotation_position="bottom right")
 
-    # 4. Aggiorniamo il layout (Margini L e R aumentati per evitare sovrapposizioni con gli assi)
+    # 4. Aggiorniamo il layout
     fig.update_layout(
         height=800, 
         template="plotly_white", 
@@ -564,7 +564,7 @@ if pagina == "📊 Dashboard Grafica (GEX)":
         yaxis_title=f"<b>Prezzo del Sottostante ({nome_asset})</b>", 
         yaxis=dict(autorange=True, type='linear', tickfont=dict(color="black", size=11)), 
         showlegend=False,
-        margin=dict(l=120, r=120, t=50, b=50) # <-- Margini aumentati
+        margin=dict(l=120, r=120, t=50, b=50)
     )
     
     st.plotly_chart(fig, use_container_width=True)
