@@ -2,12 +2,13 @@ import calendar
 import datetime
 import pytz
 import numpy as np
-
+import pandas as pd  # <--- QUESTA È LA RIGA MANCANTE
 import plotly.graph_objects as go
 import scipy.stats as si
 import streamlit as st
 import yfinance as yf
 import requests
+
 
 # =====================================================================
 # CONFIGURAZIONE PAGINA E STATO
