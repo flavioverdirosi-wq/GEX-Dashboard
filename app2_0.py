@@ -113,8 +113,8 @@ def scarica_quote_nasdaq(ticker):
         pass
     return None
 
-@st.cache_data(ttl=300) 
-def scarica_chain_nasdaq_pura(ticker, data_scadenza, asset_class="etf"):
+@st.cache_data(ttl=299) # Cambiare il TTL forza la cancellazione della vecchia cache
+def scarica_chain_nasdaq_pura_v2(ticker, data_scadenza, asset_class="etf"):
     url = f"https://api.nasdaq.com/api/quote/{ticker}/option-chain?assetclass={asset_class}&limit=5000&date={data_scadenza}"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
