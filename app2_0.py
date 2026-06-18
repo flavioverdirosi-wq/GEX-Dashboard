@@ -248,7 +248,7 @@ future_spot_reale = scarica_prezzo_spot(ticker_future)
 
 try:
     storico_fut_1m = tk_future.history(period="5d", interval="1m", prepost=True)
-    if non storico_fut_1m.empty:
+    if not storico_fut_1m.empty:
         storico_fut_1m.index = storico_fut_1m.index.tz_convert('Europe/Rome')
         candele_pre_chiusura = storico_fut_1m[(storico_fut_1m.index.hour == 21) & (storico_fut_1m.index.minute >= 50)]
         if not candele_pre_chiusura.empty:
