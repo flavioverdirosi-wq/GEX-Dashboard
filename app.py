@@ -2,7 +2,7 @@ import calendar
 import datetime
 import pytz
 import numpy as np
-import pandas as pd
+
 import plotly.graph_objects as go
 import scipy.stats as si
 import streamlit as st
