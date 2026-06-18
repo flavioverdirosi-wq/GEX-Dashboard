@@ -54,6 +54,7 @@ def calcola_greche_base(S, K, t, sigma, r=0.045):
     return delta_call, delta_put, gamma
 
 def pulisci_numero(val):
+    import pandas as pd # Sicurezza anti-crash
     if pd.isna(val) or val == '--' or val == '': return 0.0
     try:
         val_str = str(val).replace(',', '').replace('+', '').replace('▲', '').replace('▼', '').strip()
@@ -113,8 +114,10 @@ def scarica_quote_nasdaq(ticker):
         pass
     return None
 
-@st.cache_data(ttl=299) # Cambiare il TTL forza la cancellazione della vecchia cache
-def scarica_chain_nasdaq_pura_v2(ticker, data_scadenza, asset_class="etf"):
+@st.cache_data(ttl=299)
+def scarica_chain_nasdaq_pura(ticker, data_scadenza, asset_class="etf"):
+    import pandas as pd # <-- SOLUZIONE BOMB-PROOF PER L'ERRORE PD
+    import requests
     url = f"https://api.nasdaq.com/api/quote/{ticker}/option-chain?assetclass={asset_class}&limit=5000&date={data_scadenza}"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -142,6 +145,7 @@ def scarica_chain_nasdaq_pura_v2(ticker, data_scadenza, asset_class="etf"):
     return pd.DataFrame()
 
 def ottieni_dati_intelligenti(ticker, scadenza):
+    import pandas as pd # Sicurezza aggiuntiva
     df_nuova = scarica_chain_nasdaq_pura(ticker, scadenza)
     chiave = f"{ticker}_{scadenza}"
     ora_attuale = pd.Timestamp.now(tz='Europe/Rome').strftime('%H:%M:%S')
@@ -277,13 +281,11 @@ if not scadenze_disponibili:
 # =====================================================================
 if pagina == "📊 Dashboard Grafica (GEX)":
     
-    # Valori di sicurezza per la Top Bar
     valore_etf = etf_realtime_nasdaq if etf_realtime_nasdaq is not None else 0.0
     valore_fut = future_realtime_yf if future_realtime_yf is not None else 0.0
     status_color = "#00E676" if "APERTO" in stato_mercato else "#FF3B30"
     stato_pulito = stato_mercato.replace('🟢', '').replace('🔴', '').strip()
     
-    # HTML TOP BAR (Allineato a sinistra per evitare errori di Markdown)
     top_bar_html = f"""<div style="display: flex; justify-content: space-between; align-items: center; background: linear-gradient(145deg, #1A1D24 0%, #131722 100%); padding: 20px 30px; border-radius: 12px; border: 1px solid #2B3139; box-shadow: 0px 8px 20px rgba(0,0,0,0.4); margin-bottom: 25px;">
     <div style="flex: 1;">
         <h1 style="margin: 0; color: #E0E3EB; font-size: 28px; font-family: 'Arial Black', sans-serif; text-transform: uppercase; letter-spacing: 1.5px;">🎯 EOGA <span style="color: #FFD700;">GEX</span></h1>
@@ -368,6 +370,7 @@ if pagina == "📊 Dashboard Grafica (GEX)":
                     "Call_OI": 0, "Put_OI": oi_put
                 })
 
+    import pandas as pd
     df_raw = pd.DataFrame(struttura)
     if df_raw.empty: 
         st.error("Nessun dato estrapolato.")
@@ -502,6 +505,7 @@ elif pagina == "🗄️ Database Ufficiale Nasdaq":
         colonne_call = {'c_Last': 'Call Last', 'c_Change': 'Call Change', 'c_Bid': 'Call Bid', 'c_Ask': 'Call Ask', 'c_Volume': 'Call Volume', 'c_Openinterest': 'Call Open Int.'}
         colonne_put = {'p_Last': 'Put Last', 'p_Change': 'Put Change', 'p_Bid': 'Put Bid', 'p_Ask': 'Put Ask', 'p_Volume': 'Put Volume', 'p_Openinterest': 'Put Open Int.'}
         
+        import pandas as pd
         df_replica.rename(columns=colonne_call, inplace=True)
         df_replica.rename(columns=colonne_put, inplace=True)
         df_replica.rename(columns={'strike': 'Strike'}, inplace=True)
