@@ -2,13 +2,12 @@ import calendar
 import datetime
 import pytz
 import numpy as np
-import pandas as pd  # 
+import pandas as pd
 import plotly.graph_objects as go
 import scipy.stats as si
 import streamlit as st
 import yfinance as yf
 import requests
-
 
 # =====================================================================
 # CONFIGURAZIONE PAGINA E STATO
@@ -21,7 +20,6 @@ if "memoria_dati" not in st.session_state:
 # =====================================================================
 # FUNZIONI MATEMATICHE E CALENDARIO
 # =====================================================================
-# --- FUNZIONI DI SUPPORTO ---
 @st.cache_data(ttl=60)
 def get_vix_data():
     try:
@@ -31,7 +29,6 @@ def get_vix_data():
     except:
         return 15.0, 15.0
 
-# --- SEGUONO LE ALTRE FUNZIONI (scarica_prezzo_spot, ecc.) ---
 def trova_prossimo_opex_mensile():
     oggi = datetime.date.today()
     mese, anno = oggi.month, oggi.year
@@ -78,11 +75,10 @@ def verifica_stato_mercato():
 def inizializza_ticker(symbol):
     return yf.Ticker(symbol)
 
-@st.cache_data(ttl=30) # Aggiorna ogni 30 secondi per mantenere il real-time
+@st.cache_data(ttl=30)
 def scarica_prezzo_spot(symbol):
     try:
         tk_obj = yf.Ticker(symbol)
-        # prepost=True permette di scaricare i dati anche a mercato chiuso
         storico = tk_obj.history(period="1d", interval="1m", prepost=True)
         if storico.empty: 
             storico_giornaliero = tk_obj.history(period="1d")
@@ -93,7 +89,6 @@ def scarica_prezzo_spot(symbol):
 
 @st.cache_data(ttl=30)
 def scarica_quote_nasdaq(ticker):
-    """Estrae il prezzo in tempo reale / after-hours dall'API del Nasdaq"""
     url = f"https://api.nasdaq.com/api/quote/{ticker}/info?assetclass=etf"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -106,20 +101,17 @@ def scarica_quote_nasdaq(ticker):
         if r.status_code == 200:
             data = r.json().get("data", {})
             if data:
-                # Cerca prima i dati estesi (pre/post market), altrimenti il mercato primario
                 ext_data = data.get("extendedMarketData", {})
                 prim_data = data.get("primaryData", {})
                 
                 ext_price = ext_data.get("lastSalePrice", "") if ext_data else ""
-                if ext_price:
-                    return float(ext_price.replace("$", "").replace(",", ""))
+                if ext_price: return float(ext_price.replace("$", "").replace(",", ""))
                 
                 prim_price = prim_data.get("lastSalePrice", "") if prim_data else ""
-                if prim_price:
-                    return float(prim_price.replace("$", "").replace(",", ""))
+                if prim_price: return float(prim_price.replace("$", "").replace(",", ""))
     except Exception:
         pass
-    return None # Ritorna None se l'API fallisce, attivando il fallback su Yahoo
+    return None
 
 @st.cache_data(ttl=300) 
 def scarica_chain_nasdaq_pura(ticker, data_scadenza, asset_class="etf"):
@@ -130,7 +122,6 @@ def scarica_chain_nasdaq_pura(ticker, data_scadenza, asset_class="etf"):
         "Origin": "https://www.nasdaq.com",
         "Referer": "https://www.nasdaq.com/"
     }
-    
     try:
         risposta = requests.get(url, headers=headers, timeout=10)
         if risposta.status_code == 200:
@@ -170,7 +161,7 @@ def ottieni_dati_intelligenti(ticker, scadenza):
     return st.session_state.memoria_dati[chiave]
 
 # =====================================================================
-# SIDEBAR E BOTTONE AGGIORNA
+# SIDEBAR E SINCRONIZZAZIONE
 # =====================================================================
 st.sidebar.title("🧭 Navigazione App")
 pagina = st.sidebar.radio("Seleziona la vista:", ["📊 Dashboard Grafica (GEX)", "🗄️ Database Ufficiale Nasdaq"])
@@ -178,9 +169,7 @@ pagina = st.sidebar.radio("Seleziona la vista:", ["📊 Dashboard Grafica (GEX)"
 st.sidebar.markdown("---")
 st.sidebar.header("⚙️ Sincronizzazione Dati")
 
-# ==========================================
-# 1. GESTIONE INPUT TICKER CON BOTTONE
-# ==========================================
+# Input Ticker
 col_t1, col_t2 = st.sidebar.columns([3, 1])
 with col_t1:
     ticker_input = st.text_input("Ticker Sottostante (es. QQQ, SPY)", "QQQ").upper()
@@ -188,27 +177,22 @@ with col_t2:
     st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
     btn_vai = st.button("Vai 🚀", use_container_width=True)
 
-# Gestione session_state per non perdere il ticker ai ricaricamenti
 if "ticker_attivo" not in st.session_state:
     st.session_state.ticker_attivo = "QQQ"
 
 if btn_vai:
     st.session_state.ticker_attivo = ticker_input
-    st.cache_data.clear() # Pulisce la cache per forzare i nuovi dati
+    st.cache_data.clear()
 
 ticker = st.session_state.ticker_attivo
 
-# ==========================================
-# 2. MAPPATURA DINAMICA ETF -> FUTURE
-# ==========================================
+# Mappatura Futures
 MAPPATURA_FUTURES = {
     "QQQ": {"simbolo": "NQU26.CME", "nome": "NQ"},
     "SPY": {"simbolo": "ESU26.CME", "nome": "ES"},
     "IWM": {"simbolo": "RTYU26.CME", "nome": "RTY"},
     "DIA": {"simbolo": "YMU26.CME", "nome": "YM"}
 }
-
-# Fallback se metti un ticker non mappato (usa l'ETF stesso per entrambi)
 info_future = MAPPATURA_FUTURES.get(ticker, {"simbolo": ticker, "nome": ticker})
 ticker_future = info_future["simbolo"]
 nome_future = info_future["nome"]
@@ -220,63 +204,46 @@ if spot_price_reale is None:
     st.sidebar.error(f"Impossibile scaricare il prezzo per {ticker}.")
     st.stop()
 
-# Recupera la chiusura ufficiale (ore 22:00 IT)
+# Calcolo Chiusure e Moltiplicatore
 try:
     storico_daily = tk.history(period="5d", auto_adjust=False)
-    if "APERTO" in verifica_stato_mercato():
-        prezzo_chiusura_api = storico_daily['Close'].iloc[-2]
-    else:
-        prezzo_chiusura_api = storico_daily['Close'].iloc[-1]
+    prezzo_chiusura_api = storico_daily['Close'].iloc[-2] if "APERTO" in verifica_stato_mercato() else storico_daily['Close'].iloc[-1]
 except:
     prezzo_chiusura_api = spot_price_reale
 
-# ==========================================
-# OVERRIDE MANUALE CHIUSURA ETF
-# ==========================================
 usa_chiusura_manuale = st.sidebar.checkbox(f"Modifica Chiusura {ticker} a mano", value=False)
-
 if usa_chiusura_manuale:
-    prezzo_chiusura = st.sidebar.number_input(f"Prezzo {ticker} (Chiusura 22:00 IT)", value=float(prezzo_chiusura_api), step=0.10)
+    prezzo_chiusura = st.sidebar.number_input(f"Prezzo {ticker} (Chiusura)", value=float(prezzo_chiusura_api), step=0.10)
 else:
     prezzo_chiusura = prezzo_chiusura_api
-    st.sidebar.text_input(f"Prezzo {ticker} (Chiusura 22:00 IT)", value=f"{prezzo_chiusura:.2f} $", disabled=True)
+    st.sidebar.text_input(f"Prezzo {ticker} (Chiusura)", value=f"{prezzo_chiusura:.2f} $", disabled=True)
 
-# ==========================================
-# ESTRAZIONE E OVERRIDE MANUALE FUTURE (DINAMICO)
-# ==========================================
 tk_future = yf.Ticker(ticker_future)
 future_spot_reale = scarica_prezzo_spot(ticker_future)
-
 try:
     storico_fut_1m = tk_future.history(period="5d", interval="1m", prepost=True)
     if not storico_fut_1m.empty:
         storico_fut_1m.index = storico_fut_1m.index.tz_convert('Europe/Rome')
         candele_pre_chiusura = storico_fut_1m[(storico_fut_1m.index.hour == 21) & (storico_fut_1m.index.minute >= 50)]
-        if not candele_pre_chiusura.empty:
-            chiusure_giornaliere_22 = candele_pre_chiusura.groupby(candele_pre_chiusura.index.date).last()
-            prezzo_fut_api = chiusure_giornaliere_22['Close'].iloc[-1]
-        else:
-            prezzo_fut_api = future_spot_reale
+        prezzo_fut_api = candele_pre_chiusura.groupby(candele_pre_chiusura.index.date).last()['Close'].iloc[-1] if not candele_pre_chiusura.empty else future_spot_reale
     else:
         prezzo_fut_api = future_spot_reale
 except:
     prezzo_fut_api = future_spot_reale if future_spot_reale is not None else spot_price_reale
 
 usa_fut_manuale = st.sidebar.checkbox(f"Modifica Chiusura {nome_future} a mano", value=False)
-
 if usa_fut_manuale:
-    prezzo_future_man = st.sidebar.number_input(f"Prezzo Future {nome_future} (Riferimento per Greche)", value=float(prezzo_fut_api), step=10.0)
+    prezzo_future_man = st.sidebar.number_input(f"Prezzo Future {nome_future}", value=float(prezzo_fut_api), step=10.0)
 else:
     prezzo_future_man = prezzo_fut_api
-    st.sidebar.text_input(f"Prezzo Future {nome_future} (Riferimento per Greche)", value=f"{prezzo_future_man:.2f}", disabled=True)
+    st.sidebar.text_input(f"Prezzo Future {nome_future}", value=f"{prezzo_future_man:.2f}", disabled=True)
 
-# Moltiplicatore dinamico
 ratio_esatto = prezzo_future_man / prezzo_chiusura if prezzo_chiusura > 0 else 1.0
 st.sidebar.metric("Moltiplicatore Calcolato", value=f"{ratio_esatto:.4f}x")
 
+# Refresh e Stato Mercato
 st.sidebar.markdown("---")
 st.sidebar.subheader("🔄 Controllo Dati")
-
 col_r1, col_r2 = st.sidebar.columns([3, 1])
 with col_r1:
     auto_refresh = st.checkbox("⏱️ Auto-Refresh (2 min)", value=True)
@@ -285,61 +252,68 @@ with col_r2:
         st.cache_data.clear() 
         st.rerun()
 
-# Motore JavaScript nascosto per l'auto-reload
 if auto_refresh:
     import streamlit.components.v1 as components
-    components.html(
-        """
-        <script>
-        setTimeout(function(){
-            window.parent.location.reload();
-        }, 120000); // 120000 ms = 2 minuti
-        </script>
-        """,
-        height=0, width=0
-    )
+    components.html("<script>setTimeout(function(){window.parent.location.reload();}, 120000);</script>", height=0, width=0)
 
 stato_mercato = verifica_stato_mercato()
 tz_it = pytz.timezone('Europe/Rome')
 ora_it = datetime.datetime.now(tz_it).strftime("%d %b %Y - %H:%M IT")
 
-stato_mercato = verifica_stato_mercato()
-tz_it = pytz.timezone('Europe/Rome')
-ora_it = datetime.datetime.now(tz_it).strftime("%d %b %Y - %H:%M IT")
-
-st.sidebar.markdown("---")
-st.sidebar.subheader("📊 Valori di Mercato")
-
-# =====================================================================
-# RECUPERO DATI IN TEMPO REALE E HTML BOX DINAMICO
-# =====================================================================
 etf_realtime_nasdaq = scarica_quote_nasdaq(ticker)
-if etf_realtime_nasdaq is None:
-    etf_realtime_nasdaq = spot_price_reale 
+if etf_realtime_nasdaq is None: etf_realtime_nasdaq = spot_price_reale 
 
 future_realtime_yf = scarica_prezzo_spot(ticker_future)
-if future_realtime_yf is None:
-    future_realtime_yf = prezzo_future_man
-
+if future_realtime_yf is None: future_realtime_yf = prezzo_future_man
 
 scadenze_disponibili = list(tk.options)
 if not scadenze_disponibili:
     st.error(f"Nessuna data trovata per {ticker}.")
     st.stop()
 
-opex_mensile_calcolato = trova_prossimo_opex_mensile()
 
 # =====================================================================
 # PAGINA 1: DASHBOARD GRAFICA
 # =====================================================================
-
+if pagina == "📊 Dashboard Grafica (GEX)":
     
-    # =====================================================================
-    # DASHBOARD GRAFICA - FILTRI E TOGGLE DINAMICO
-    # =====================================================================
+    # Valori di sicurezza per la Top Bar
+    valore_etf = etf_realtime_nasdaq if etf_realtime_nasdaq is not None else 0.0
+    valore_fut = future_realtime_yf if future_realtime_yf is not None else 0.0
+    status_color = "#00E676" if "APERTO" in stato_mercato else "#FF3B30"
+    stato_pulito = stato_mercato.replace('🟢', '').replace('🔴', '').strip()
+    
+    # HTML TOP BAR (Allineato a sinistra per evitare errori di Markdown)
+    top_bar_html = f"""<div style="display: flex; justify-content: space-between; align-items: center; background: linear-gradient(145deg, #1A1D24 0%, #131722 100%); padding: 20px 30px; border-radius: 12px; border: 1px solid #2B3139; box-shadow: 0px 8px 20px rgba(0,0,0,0.4); margin-bottom: 25px;">
+    <div style="flex: 1;">
+        <h1 style="margin: 0; color: #E0E3EB; font-size: 28px; font-family: 'Arial Black', sans-serif; text-transform: uppercase; letter-spacing: 1.5px;">🎯 EOGA <span style="color: #FFD700;">GEX</span></h1>
+        <span style="color: #8C92A4; font-size: 13px; text-transform: uppercase; letter-spacing: 2px;">Advanced Order Book</span>
+    </div>
+    <div style="display: flex; gap: 40px; align-items: center; justify-content: center; flex: 2;">
+        <div style="text-align: right;">
+            <span style="color: #8C92A4; font-size: 12px; text-transform: uppercase; font-weight: 600; letter-spacing: 1px;">{ticker} (Spot)</span><br>
+            <span style="color: #FFFFFF; font-size: 34px; font-weight: 900; font-family: 'Courier New', monospace; text-shadow: 0 0 10px rgba(255,255,255,0.1);">${valore_etf:,.2f}</span>
+        </div>
+        <div style="height: 50px; width: 2px; background: linear-gradient(to bottom, transparent, #3A414D, transparent);"></div>
+        <div style="text-align: left;">
+            <span style="color: #8C92A4; font-size: 12px; text-transform: uppercase; font-weight: 600; letter-spacing: 1px;">{nome_future} (Future)</span><br>
+            <span style="color: #FFFFFF; font-size: 34px; font-weight: 900; font-family: 'Courier New', monospace; text-shadow: 0 0 10px rgba(255,255,255,0.1);">{valore_fut:,.2f}</span>
+        </div>
+    </div>
+    <div style="flex: 1; text-align: right;">
+        <div style="display: inline-flex; align-items: center; gap: 10px; background-color: rgba(255,255,255,0.03); padding: 8px 15px; border-radius: 30px; border: 1px solid rgba(255,255,255,0.08);">
+            <div style="width: 10px; height: 10px; border-radius: 50%; background-color: {status_color}; box-shadow: 0 0 8px {status_color};"></div>
+            <span style="color: #E0E3EB; font-weight: bold; font-size: 14px; letter-spacing: 1px;">{stato_pulito}</span>
+        </div>
+        <div style="margin-top: 8px; color: #8C92A4; font-size: 12px; font-family: monospace;">{ora_it}</div>
+    </div>
+</div>"""
+    st.markdown(top_bar_html, unsafe_allow_html=True)
+
+    # --- FILTRI ---
     col_f1, col_f2, col_f3, col_f4 = st.columns(4)
     with col_f1:
-        usa_total_gex = st.checkbox("🌐 Calcola Total GEX (Aggregato)", value=False, help="Scarica e unisce le prossime 12 scadenze per simulare il posizionamento Istituzionale macro.")
+        usa_total_gex = st.checkbox("🌐 Calcola Total GEX (Aggregato)", value=False)
         scadenza_sel = st.selectbox("Scadenza Singola:", scadenze_disponibili, disabled=usa_total_gex)
     with col_f2:
         filtro_percentuale = st.slider("Zoom Grafico (+/- % dal prezzo)", min_value=1, max_value=20, value=3)
@@ -347,9 +321,8 @@ opex_mensile_calcolato = trova_prossimo_opex_mensile()
         tipo_visualizzazione = st.radio("Visualizza Istogramma:", ["GEX (Gamma)", "DEX (Delta)"], horizontal=True)
     with col_f4:
         st.markdown("<br>", unsafe_allow_html=True)
-        mostra_etf = st.checkbox(f"🔄 Mostra livelli in {ticker}", value=False, help=f"Visualizza asse Y e livelli sul prezzo dell'ETF {ticker} invece che sul Future {nome_future}.")
+        mostra_etf = st.checkbox(f"🔄 Mostra livelli in {ticker}", value=False)
     
-    # Integrazione VIX Live come motore per le Greche
     vix_live, vxn_live = get_vix_data()
     iv_stimata = vix_live / 100.0
     st.info(f"⚙️ Motore Greche alimentato da VIX Live: {vix_live:.2f}% (Rif. VXN: {vxn_live:.2f}%)")
@@ -357,12 +330,8 @@ opex_mensile_calcolato = trova_prossimo_opex_mensile()
     oggi = datetime.date.today()
     struttura = []
     
-    # ==========================================
-    # LOGICA DI ESTRAZIONE MULTIPLA (TOTAL GEX) vs SINGOLA
-    # ==========================================
-    # Limitiamo a 12 scadenze per non far collassare l'API del Nasdaq (Timeout)
+    # --- ESTRAZIONE DATI ---
     scadenze_da_analizzare = scadenze_disponibili[:12] if usa_total_gex else [scadenza_sel]
-    
     if usa_total_gex:
         st.warning(f"⏳ Elaborazione Total GEX in corso ({len(scadenze_da_analizzare)} scadenze). Potrebbe richiedere 5-10 secondi...")
 
@@ -370,15 +339,12 @@ opex_mensile_calcolato = trova_prossimo_opex_mensile()
         dati_estratti = ottieni_dati_intelligenti(ticker, scad)
         df_chain_temp = dati_estratti["df"]
         
-        if df_chain_temp.empty:
-            continue
+        if df_chain_temp.empty: continue
             
-        # Calcolo DTE specifico per QUESTA scadenza
         data_scad = datetime.datetime.strptime(scad, "%Y-%m-%d").date()
         giorni = (data_scad - oggi).days
         t_anno = (0.5 / 365.0) if giorni <= 0 else (giorni / 365.0)
 
-        # Elaborazione Greche e Struttura
         for _, riga in df_chain_temp.iterrows():
             K = riga["strike"]
             oi_call = riga.get("c_Openinterest", 0)
@@ -387,23 +353,19 @@ opex_mensile_calcolato = trova_prossimo_opex_mensile()
             if oi_call > 0:
                 d_c, _, gamma_c = calcola_greche_base(spot_price_reale, K, t_anno, iv_stimata)
                 struttura.append({
-                    "Strike_ETF": K, 
-                    "Strike_Future": K * ratio_esatto, 
+                    "Strike_ETF": K, "Strike_Future": K * ratio_esatto, 
                     "GEX": gamma_c * oi_call * 100 * (spot_price_reale**2) * 0.01, 
                     "DEX": d_c * oi_call * 100 * spot_price_reale * 0.01,
-                    "Call_OI": oi_call,
-                    "Put_OI": 0
+                    "Call_OI": oi_call, "Put_OI": 0
                 })
                 
             if oi_put > 0:
                 _, d_p, gamma_p = calcola_greche_base(spot_price_reale, K, t_anno, iv_stimata)
                 struttura.append({
-                    "Strike_ETF": K, 
-                    "Strike_Future": K * ratio_esatto, 
+                    "Strike_ETF": K, "Strike_Future": K * ratio_esatto, 
                     "GEX": -gamma_p * oi_put * 100 * (spot_price_reale**2) * 0.01, 
                     "DEX": d_p * oi_put * 100 * spot_price_reale * 0.01,
-                    "Call_OI": 0,
-                    "Put_OI": oi_put
+                    "Call_OI": 0, "Put_OI": oi_put
                 })
 
     df_raw = pd.DataFrame(struttura)
@@ -411,16 +373,9 @@ opex_mensile_calcolato = trova_prossimo_opex_mensile()
         st.error("Nessun dato estrapolato.")
         st.stop()
 
-    # Raggruppiamo preservando entrambe le colonne di prezzo e sommando tutto il GEX di tutte le date
     df = df_raw.groupby(["Strike_ETF", "Strike_Future"]).sum().reset_index()
 
-    # ==========================================
-    # APPLICAZIONE LOGICA TOGGLE DINAMICA
-    # ==========================================
-
-    # ==========================================
-    # APPLICAZIONE LOGICA TOGGLE DINAMICA
-    # ==========================================
+    # --- LOGICA DI VISUALIZZAZIONE ---
     colonna_y = "Strike_ETF" if mostra_etf else "Strike_Future"
     spot_riferimento = etf_realtime_nasdaq if mostra_etf else future_realtime_yf
     nome_asset = ticker if mostra_etf else nome_future
@@ -431,26 +386,19 @@ opex_mensile_calcolato = trova_prossimo_opex_mensile()
     df_utile = df[(df[colonna_y] >= limite_inf) & (df[colonna_y] <= limite_sup)].copy()
     if df_utile.empty: df_utile = df.copy()
 
-    # Ordinamento per calcolare l'HVL correttamente
     df_utile = df_utile.sort_values(colonna_y).reset_index(drop=True)
 
     call_wall = df_utile.loc[df_utile["GEX"].idxmax()][colonna_y]
     put_wall = df_utile.loc[df_utile["GEX"].idxmin()][colonna_y]
 
-    # ==========================================
-    # CALCOLO HVL (FLIP POINT) ESATTAMENTE A METÀ
-    # ==========================================
     df_utile["GEX_Cum"] = df_utile["GEX"].cumsum()
     idx_flip = np.where(np.diff(np.sign(df_utile["GEX_Cum"])) != 0)[0]
     
     if len(idx_flip) > 0:
         indice_sotto = idx_flip[0]
         indice_sopra = indice_sotto + 1
-        
         if indice_sopra < len(df_utile):
-            strike_sotto = df_utile.iloc[indice_sotto][colonna_y]
-            strike_sopra = df_utile.iloc[indice_sopra][colonna_y]
-            gamma_flip = (strike_sotto + strike_sopra) / 2.0
+            gamma_flip = (df_utile.iloc[indice_sotto][colonna_y] + df_utile.iloc[indice_sopra][colonna_y]) / 2.0
         else:
             gamma_flip = df_utile.iloc[indice_sotto][colonna_y]
     else:
@@ -459,62 +407,19 @@ opex_mensile_calcolato = trova_prossimo_opex_mensile()
     metric_col = "GEX" if tipo_visualizzazione == "GEX (Gamma)" else "DEX"
     df_utile["Colore"] = np.where(df_utile[metric_col] >= 0, "#32CD32", "#FF3B30")
 
-    
-    # ==========================================
-    # CALCOLO PUT/CALL RATIO E METRICHE
-    # ==========================================
+    # --- METRICHE ---
     tot_call_oi = df_raw['Call_OI'].sum()
     tot_put_oi = df_raw['Put_OI'].sum()
     pcr_oi = tot_put_oi / tot_call_oi if tot_call_oi > 0 else 0.0
 
-    # ==========================================
-    # TESTI PER I TOOLTIP (HELP)
-    # ==========================================
-    help_call_wall = """
-    **🟢 CALL WALL (Il Magnete e il Tetto)**
-    * **Cos'è:** Lo strike con la massima esposizione GEX positiva. I Market Maker sono "Long Gamma".
-    * **Meccanica:** Per coprirsi, i dealer operano *contro-trend* (vendono futures sui rialzi, comprano sui ribassi).
-    * **Operatività:** Quando il prezzo è sotto, fa da calamita. Una volta raggiunto, la volatilità crolla e funge da "tetto". Cerca setup di mean-reversion (es. short su mancata rottura).
-    """
-
-    help_gamma_flip = """
-    **🟡 GAMMA FLIP (Punto di Flesso del Regime)**
-    * **Cos'è:** Il livello di "Zero Gamma", dove l'esposizione totale passa da positiva a negativa.
-    * **Meccanica:** Sopra il livello i dealer assorbono volatilità (mercato tranquillo). Sotto il livello la amplificano (mercato tossico).
-    * **Operatività:** È il filtro direzionale primario. Sotto il Gamma Flip le discese diventano veloci e verticali. Evitare long avventati.
-    """
-
-    help_put_wall = """
-    **🔴 PUT WALL (Il Pavimento e l'Acceleratore)**
-    * **Cos'è:** Lo strike con la massima esposizione GEX negativa.
-    * **Meccanica:** I dealer sono "Short Gamma". Se il prezzo scende, sono costretti a shortare futures, creando panico.
-    * **Operatività:** Target naturale per gli short. Spesso genera un violento rimbalzo a V (*V-Bottom*) perché gli istituzionali incassano e i dealer ricomprano di colpo.
-    """
-
-    help_pcr = """
-    **⚖️ PUT/CALL RATIO (Open Interest)**
-    * Indica il sentiment del mercato opzionario su questa specifica scadenza.
-    * Valori **> 1**: Prevalenza di Put (Sentiment difensivo/ribassista).
-    * Valori **< 1**: Prevalenza di Call (Sentiment speculativo/rialzista).
-    """
-
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric(f"🟢 CALL WALL {nome_asset}", f"{call_wall:.0f}", help=help_call_wall)
-    c2.metric(f"🟡 HVL (FLIP POINT) {nome_asset}", f"{gamma_flip:.2f}", help=help_gamma_flip)
-    c3.metric(f"🔴 PUT WALL {nome_asset}", f"{put_wall:.0f}", help=help_put_wall)
-    c4.metric("⚖️ P/C RATIO (OI)", f"{pcr_oi:.2f}", help=help_pcr)
+    c1.metric(f"🟢 CALL WALL {nome_asset}", f"{call_wall:.0f}")
+    c2.metric(f"🟡 HVL (FLIP POINT) {nome_asset}", f"{gamma_flip:.2f}")
+    c3.metric(f"🔴 PUT WALL {nome_asset}", f"{put_wall:.0f}")
+    c4.metric("⚖️ P/C RATIO (OI)", f"{pcr_oi:.2f}")
     
-# ==========================================
-  # ==========================================
-    # RENDERIZZAZIONE GRAFICO PLOTLY (PULIZIA RUMORE E SOVRAPPOSIZIONI)
-    # ==========================================
-    
-    # 1. Calcolo soglie per il grassetto (50% del picco massimo e minimo)
-    max_call_val = df_utile[metric_col].max()
-    min_put_val = df_utile[metric_col].min()
-    
-    soglia_call = max_call_val * 0.5
-    soglia_put = min_put_val * 0.5
+    # --- RENDERIZZAZIONE GRAFICO PLOTLY PULITO ---
+    soglia_visibilita = df_utile[metric_col].abs().max() * 0.15
     
     testi_barre = []
     dimensioni_testo = []
@@ -523,31 +428,17 @@ opex_mensile_calcolato = trova_prossimo_opex_mensile()
     for index, row in df_utile.iterrows():
         val_y = row[colonna_y]
         val_x = row[metric_col]
-        val_round = int(round(val_y))
-        
-        # Livelli Master (Wall)
-        if val_y == call_wall:
-            testi_barre.append(f"<b>{val_round} 🟢 CALL WALL</b>")
-            dimensioni_testo.append(15)
+        if val_y in [call_wall, put_wall] or abs(val_x) >= soglia_visibilita:
+            testi_barre.append(f"<b>{int(round(val_y))}</b>")
+            dimensioni_testo.append(13)
             colori_testo.append("black")
-        elif val_y == put_wall:
-            testi_barre.append(f"<b>{val_round} 🔴 PUT WALL</b>")
-            dimensioni_testo.append(15)
-            colori_testo.append("black")
-        # Livelli Rilevanti (> 50% del massimo)
-        elif val_x >= soglia_call or val_x <= soglia_put:
-            testi_barre.append(f"<b>{val_round}</b>")
-            dimensioni_testo.append(14)
-            colori_testo.append("black")
-        # Livelli "Rumore" (< 50%)
         else:
-            testi_barre.append(f"{val_round}")
-            dimensioni_testo.append(11)
-            colori_testo.append("#95A5A6")
+            testi_barre.append("")
+            dimensioni_testo.append(0)
+            colori_testo.append("transparent")
 
     fig = go.Figure()
     
-    # 2. Renderizziamo le barre
     fig.add_trace(go.Bar(
         x=df_utile[metric_col], 
         y=df_utile[colonna_y], 
@@ -555,49 +446,31 @@ opex_mensile_calcolato = trova_prossimo_opex_mensile()
         marker_color=df_utile["Colore"], 
         text=testi_barre, 
         textposition='outside',
-        textfont=dict(size=dimensioni_testo, color=colori_testo, family="Arial"), 
+        textfont=dict(size=dimensioni_testo, color=colori_testo, family="Arial Black"), 
         cliponaxis=False
     ))
 
-    # 3. Linee Orizzontali
-    
-    # HVL mediatrice -> Etichetta a Sinistra
-    fig.add_hline(y=gamma_flip, line_dash="solid", line_color="#FFB300", line_width=3, layer="below",
-                  annotation_text=f"   <b>HVL: {gamma_flip:.2f}</b>", 
-                  annotation_font_size=13, annotation_font_color="black",
-                  annotation_bgcolor="#FFF3E0", annotation_bordercolor="#FFB300", annotation_borderpad=3,
-                  annotation_position="top left")
-    
-    # Call Wall -> SOLO LINEA TRATTEGGIATA
+    fig.add_hline(y=gamma_flip, line_dash="solid", line_color="#FFB300", line_width=3, layer="below")
     fig.add_hline(y=call_wall, line_dash="dash", line_color="#32CD32", line_width=2, layer="below")
-                  
-    # Put Wall -> SOLO LINEA TRATTEGGIATA
     fig.add_hline(y=put_wall, line_dash="dash", line_color="#FF3B30", line_width=2, layer="below")
-                  
-    # Prezzo Spot Live -> Etichetta a Destra
-    fig.add_hline(y=spot_riferimento, line_color="#00FFFF", line_width=2, layer="below",
-                  annotation_text=f"<b>SPOT: {spot_riferimento:.2f}</b>   ", 
-                  annotation_font_size=13, annotation_font_color="black",
-                  annotation_bgcolor="#E0FFFF", annotation_bordercolor="#00FFFF", annotation_borderpad=3,
-                  annotation_position="bottom right")
+    fig.add_hline(y=spot_riferimento, line_color="#00FFFF", line_width=2, layer="below")
 
-    # 4. Aggiorniamo il layout
     fig.update_layout(
         height=800, 
         template="plotly_white", 
         xaxis_title=f"<b>Esposizione Monetaria ({metric_col})</b>", 
-        yaxis_title=f"<b>Prezzo del Sottostante ({nome_asset})</b>", 
-        yaxis=dict(autorange=True, type='linear', tickfont=dict(color="black", size=11)), 
-        showlegend=False,
-        margin=dict(l=120, r=120, t=50, b=50)
+        yaxis_title=f"<b>Prezzo ({nome_asset})</b>", 
+        yaxis=dict(showgrid=True, gridcolor="#EEEEEE"),
+        margin=dict(l=100, r=100, t=20, b=50),
+        showlegend=False
     )
     
     st.plotly_chart(fig, use_container_width=True)
+
 # =====================================================================
-# PAGINA 2: REPLICA SITO NASDAQ CON HIGHLIGHT SPOT
+# PAGINA 2: REPLICA SITO NASDAQ
 # =====================================================================
-elif pagina == "🗄️ Database Ufficiale":
-    # Mappa titoli completi per abbellire l'intestazione
+elif pagina == "🗄️ Database Ufficiale Nasdaq":
     NOMI_COMPLETI = {
         "QQQ": "Invesco QQQ Trust, Series 1",
         "SPY": "SPDR S&P 500 ETF Trust",
@@ -608,14 +481,10 @@ elif pagina == "🗄️ Database Ufficiale":
     st.title(f"{titolo_esteso} ({ticker}) Option Chain")
     
     col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        filtro_scadenza = st.selectbox("Expiration Dates", scadenze_disponibili)
-    with col2:
-        filtro_strategy = st.selectbox("Strategy", ["Calls & Puts", "Calls", "Puts"])
-    with col3:
-        filtro_moneyness = st.selectbox("Moneyness", ["All", "Near the Money", "In the Money", "Out of the Money"], index=1)
-    with col4:
-        filtro_type = st.selectbox("Type", ["All (Types)", "Weekly", "Monthly", "Quarterly", "CEBO"])
+    with col1: filtro_scadenza = st.selectbox("Expiration Dates", scadenze_disponibili)
+    with col2: filtro_strategy = st.selectbox("Strategy", ["Calls & Puts", "Calls", "Puts"])
+    with col3: filtro_moneyness = st.selectbox("Moneyness", ["All", "Near the Money", "In the Money", "Out of the Money"], index=1)
+    with col4: filtro_type = st.selectbox("Type", ["All (Types)", "Weekly", "Monthly", "Quarterly", "CEBO"])
 
     dati_estratti = ottieni_dati_intelligenti(ticker, filtro_scadenza)
     df_replica = dati_estratti["df"]
@@ -630,14 +499,8 @@ elif pagina == "🗄️ Database Ufficiale":
             limite_sup = spot_price_reale * 1.05
             df_replica = df_replica[(df_replica['strike'] >= limite_inf) & (df_replica['strike'] <= limite_sup)]
         
-        colonne_call = {
-            'c_Last': 'Call Last', 'c_Change': 'Call Change', 'c_Bid': 'Call Bid', 
-            'c_Ask': 'Call Ask', 'c_Volume': 'Call Volume', 'c_Openinterest': 'Call Open Int.'
-        }
-        colonne_put = {
-            'p_Last': 'Put Last', 'p_Change': 'Put Change', 'p_Bid': 'Put Bid', 
-            'p_Ask': 'Put Ask', 'p_Volume': 'Put Volume', 'p_Openinterest': 'Put Open Int.'
-        }
+        colonne_call = {'c_Last': 'Call Last', 'c_Change': 'Call Change', 'c_Bid': 'Call Bid', 'c_Ask': 'Call Ask', 'c_Volume': 'Call Volume', 'c_Openinterest': 'Call Open Int.'}
+        colonne_put = {'p_Last': 'Put Last', 'p_Change': 'Put Change', 'p_Bid': 'Put Bid', 'p_Ask': 'Put Ask', 'p_Volume': 'Put Volume', 'p_Openinterest': 'Put Open Int.'}
         
         df_replica.rename(columns=colonne_call, inplace=True)
         df_replica.rename(columns=colonne_put, inplace=True)
@@ -651,62 +514,39 @@ elif pagina == "🗄️ Database Ufficiale":
         elif filtro_strategy == "Puts":
             colonne_finali = ['Strike', 'Strike NQ', 'Put Last', 'Put Change', 'Put Bid', 'Put Ask', 'Put Volume', 'Put Open Int.']
             
-        df_tabella = df_replica[colonne_finali].copy()
+        df_tabella = df_replica[colonne_finali].copy().replace(0.0, "--")
         
-        # Sostituiamo gli zeri non scambiati con un trattino
-        df_tabella = df_tabella.replace(0.0, "--")
-        
-        # =====================================================================
-        # LOGICA DI STILE, HIGHLIGHT E FORMATTAZIONE TABELLA
-        # =====================================================================
         if not df_tabella.empty:
-            # 1. Trova lo strike ATM
             strike_piu_vicino = df_tabella.iloc[(df_tabella['Strike'] - spot_price_reale).abs().argsort()[:1]]['Strike'].values[0]
             
-            # 2. Funzioni di formattazione del testo (2 decimali, interi, frecce)
-            def formatta_base(val):
-                if pd.isna(val) or val == "--": return "--"
-                return f"{float(val):.2f}"
-            
-            def formatta_interi(val):
-                if pd.isna(val) or val == "--": return "--"
-                return f"{int(float(val))}"
-                
+            def formatta_base(val): return f"{float(val):.2f}" if not pd.isna(val) and val != "--" else "--"
+            def formatta_interi(val): return f"{int(float(val))}" if not pd.isna(val) and val != "--" else "--"
             def formatta_change(val):
                 if pd.isna(val) or val == "--": return "--"
                 v = float(val)
-                if v > 0: return f"▲ {v:.2f}"
-                elif v < 0: return f"▼ {abs(v):.2f}"
-                return "--"
+                return f"▲ {v:.2f}" if v > 0 else f"▼ {abs(v):.2f}" if v < 0 else "--"
             
-            # Identificazione delle colonne per applicare la giusta formattazione
             colonne_change = [c for c in ['Call Change', 'Put Change'] if c in df_tabella.columns]
             colonne_intere = [c for c in ['Call Volume', 'Call Open Int.', 'Put Volume', 'Put Open Int.'] if c in df_tabella.columns]
             
-            # Creazione del dizionario di formattazione per lo Styler
             dict_formattazione = {col: formatta_base for col in df_tabella.columns if col not in colonne_change and col not in colonne_intere}
             for col in colonne_change: dict_formattazione[col] = formatta_change
             for col in colonne_intere: dict_formattazione[col] = formatta_interi
 
-            # 3. Funzioni per il colore (Verde/Rosso su Change, Azzurro su riga ATM)
             def colora_celle_change(s):
                 stili = []
                 for val in s:
-                    if pd.isna(val) or val == "--":
-                        stili.append("")
+                    if pd.isna(val) or val == "--": stili.append("")
                     else:
                         v = float(val)
-                        if v > 0: stili.append("color: #00C853; font-weight: bold;") # Verde
-                        elif v < 0: stili.append("color: #FF3B30; font-weight: bold;") # Rosso
+                        if v > 0: stili.append("color: #00C853; font-weight: bold;")
+                        elif v < 0: stili.append("color: #FF3B30; font-weight: bold;")
                         else: stili.append("")
                 return stili
             
             def evidenzia_spot(row):
-                if row['Strike'] == strike_piu_vicino:
-                    return ['background-color: rgba(0, 255, 255, 0.15)'] * len(row)
-                return [''] * len(row)
+                return ['background-color: rgba(0, 255, 255, 0.15)'] * len(row) if row['Strike'] == strike_piu_vicino else [''] * len(row)
             
-            # 4. Applicazione della pipeline di Stile Pandas
             df_styled = (df_tabella.style
                          .format(dict_formattazione)
                          .apply(colora_celle_change, subset=colonne_change, axis=0)
@@ -716,6 +556,5 @@ elif pagina == "🗄️ Database Ufficiale":
             st.dataframe(df_styled, use_container_width=True, height=800)
         else:
             st.dataframe(df_tabella, use_container_width=True, height=800)
-            
     else:
         st.warning("Dati non trovati per la data selezionata. Il mercato potrebbe non aver ancora popolato i volumi.")
