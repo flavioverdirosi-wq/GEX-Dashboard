@@ -510,11 +510,36 @@ if pagina == "📊 Dashboard Grafica (GEX)":
     tot_put_oi = df_raw['Put_OI'].sum()
     pcr_oi = tot_put_oi / tot_call_oi if tot_call_oi > 0 else 0.0
 
+   # --- RENDERIZZAZIONE METRICHE TATTICHE (Versione 1.0) ---
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric(f"🟢 CALL WALL {nome_asset}", f"{call_wall:.0f}")
-    c2.metric(f"🟡 HVL (FLIP POINT) {nome_asset}", f"{gamma_flip:.2f}")
-    c3.metric(f"🔴 PUT WALL {nome_asset}", f"{put_wall:.0f}")
-    c4.metric("⚖️ P/C RATIO (OI)", f"{pcr_oi:.2f}")
+    
+    c1.metric(
+        label=f"🟢 CALL WALL {nome_asset}", 
+        value=f"{call_wall:.0f}",
+        help="""CALL WALL: Soffitto meccanico. 
+        Operatività: Resistenza forte, valutazione take-profit sui long o apertura short."""
+    )
+    
+    c2.metric(
+        label=f"🟡 HVL (FLIP POINT) {nome_asset}", 
+        value=f"{gamma_flip:.2f}",
+        help="""HVL (Zero Gamma): Punto di equilibrio. 
+        Operatività: Sotto=Volatilità (Short Gamma); Sopra=Trend (Long Gamma)."""
+    )
+    
+    c3.metric(
+        label=f"🔴 PUT WALL {nome_asset}", 
+        value=f"{put_wall:.0f}",
+        help="""PUT WALL: Pavimento meccanico. 
+        Operatività: Supporto forte, zona ideale per buy-the-dip o chiusura short."""
+    )
+    
+    c4.metric(
+        label="⚖️ P/C RATIO (OI)", 
+        value=f"{pcr_oi:.2f}",
+        help="""P/C RATIO: Misura dell'eccesso di posizionamento. 
+        Operatività: >1.2 pessimismo (rischio squeeze), <0.8 ottimismo (ipercomprato)."""
+    )
     
     
     # --- RENDERIZZAZIONE GRAFICO PLOTLY PULITO ---
