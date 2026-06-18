@@ -2,7 +2,7 @@ import calendar
 import datetime
 import pytz
 import numpy as np
-import pandas as pd  # <--- QUESTA È LA RIGA MANCANTE
+import pandas as pd  # 
 import plotly.graph_objects as go
 import scipy.stats as si
 import streamlit as st
@@ -520,7 +520,7 @@ if pagina == "📊 Dashboard Grafica (GEX)":
             dimensioni_testo.append(11)
             colori_testo.append("#95A5A6") # Grigio per sbiadire sullo sfondo
 
-    fig = go.Figure()
+   fig = go.Figure()
     
     # 2. Renderizziamo le barre
     fig.add_trace(go.Bar(
@@ -534,37 +534,29 @@ if pagina == "📊 Dashboard Grafica (GEX)":
         cliponaxis=False
     ))
 
-    # 3. Linee Orizzontali: Distribuite ai 4 angoli per evitare collisioni!
+    # 3. Linee Orizzontali: Pulizia delle ridondanze!
     
-    # HVL mediatrice -> IN ALTO A SINISTRA
+    # HVL mediatrice -> Etichetta a Sinistra (con spazi per distanziarla dall'asse)
     fig.add_hline(y=gamma_flip, line_dash="solid", line_color="#FFB300", line_width=3, layer="below",
-                  annotation_text=f"<b>HVL: {gamma_flip:.2f}</b>", 
+                  annotation_text=f"   <b>HVL: {gamma_flip:.2f}</b>", 
                   annotation_font_size=13, annotation_font_color="black",
                   annotation_bgcolor="#FFF3E0", annotation_bordercolor="#FFB300", annotation_borderpad=3,
                   annotation_position="top left")
     
-    # Call Wall -> IN ALTO A DESTRA
-    fig.add_hline(y=call_wall, line_dash="dash", line_color="#32CD32", line_width=2, layer="below",
-                  annotation_text=f"<b>CALL WALL: {call_wall:.0f}</b>", 
-                  annotation_font_size=13, annotation_font_color="black",
-                  annotation_bgcolor="#E8F5E9", annotation_borderpad=3,
-                  annotation_position="top right")
+    # Call Wall -> SOLO LINEA TRATTEGGIATA (il testo è già stampato dalla barra)
+    fig.add_hline(y=call_wall, line_dash="dash", line_color="#32CD32", line_width=2, layer="below")
                   
-    # Put Wall -> IN BASSO A SINISTRA
-    fig.add_hline(y=put_wall, line_dash="dash", line_color="#FF3B30", line_width=2, layer="below",
-                  annotation_text=f"<b>PUT WALL: {put_wall:.0f}</b>", 
-                  annotation_font_size=13, annotation_font_color="black",
-                  annotation_bgcolor="#FFEBEE", annotation_borderpad=3,
-                  annotation_position="bottom left")
+    # Put Wall -> SOLO LINEA TRATTEGGIATA (il testo è già stampato dalla barra)
+    fig.add_hline(y=put_wall, line_dash="dash", line_color="#FF3B30", line_width=2, layer="below")
                   
-    # Prezzo Spot Live -> IN BASSO A DESTRA
+    # Prezzo Spot Live -> Etichetta a Destra
     fig.add_hline(y=spot_riferimento, line_color="#00FFFF", line_width=2, layer="below",
-                  annotation_text=f"<b>SPOT: {spot_riferimento:.2f}</b>", 
+                  annotation_text=f"<b>SPOT: {spot_riferimento:.2f}</b>   ", 
                   annotation_font_size=13, annotation_font_color="black",
                   annotation_bgcolor="#E0FFFF", annotation_bordercolor="#00FFFF", annotation_borderpad=3,
                   annotation_position="bottom right")
 
-    # 4. Aggiorniamo il layout
+    # 4. Aggiorniamo il layout (Margini L e R aumentati per evitare sovrapposizioni con gli assi)
     fig.update_layout(
         height=800, 
         template="plotly_white", 
@@ -572,7 +564,7 @@ if pagina == "📊 Dashboard Grafica (GEX)":
         yaxis_title=f"<b>Prezzo del Sottostante ({nome_asset})</b>", 
         yaxis=dict(autorange=True, type='linear', tickfont=dict(color="black", size=11)), 
         showlegend=False,
-        margin=dict(l=50, r=50, t=50, b=50) 
+        margin=dict(l=120, r=120, t=50, b=50) # <-- Margini aumentati
     )
     
     st.plotly_chart(fig, use_container_width=True)
