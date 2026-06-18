@@ -321,21 +321,7 @@ future_realtime_yf = scarica_prezzo_spot(ticker_future)
 if future_realtime_yf is None:
     future_realtime_yf = prezzo_future_man
 
-colore_bg = "#00C853" if "APERTO" in stato_mercato else "#131722"
-colore_text = "#FFFFFF" if "APERTO" in stato_mercato else "#B2B5BE"
 
-html_box = f"""
-<div style="background-color: {colore_bg}; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-    <h4 style="margin: 0; color: {colore_text}; font-size: 14px; opacity: 0.8;">{ticker} (Real-Time Nasdaq)</h4>
-    <h1 style="margin: 0; color: {colore_text}; font-size: 32px;">${etf_realtime_nasdaq:.2f}</h1>
-    <hr style="border-color: {colore_text}; opacity: 0.2; margin: 10px 0;">
-    <h4 style="margin: 0; color: {colore_text}; font-size: 14px; opacity: 0.8;">{nome_future}=F (Real-Time Future)</h4>
-    <h1 style="margin: 0; color: {colore_text}; font-size: 28px;">{future_realtime_yf:.2f}</h1>
-    <p style="margin: 10px 0 0 0; color: {colore_text}; font-size: 16px; font-weight: bold;">{stato_mercato}</p>
-    <p style="margin: 2px 0 0 0; color: {colore_text}; font-size: 13px; opacity: 0.9;">{ora_it}</p>
-</div>
-"""
-st.sidebar.markdown(html_box, unsafe_allow_html=True)
 scadenze_disponibili = list(tk.options)
 if not scadenze_disponibili:
     st.error(f"Nessuna data trovata per {ticker}.")
@@ -347,7 +333,44 @@ opex_mensile_calcolato = trova_prossimo_opex_mensile()
 # PAGINA 1: DASHBOARD GRAFICA
 # =====================================================================
 if pagina == "📊 Dashboard Grafica (GEX)":
-    st.title("🎯 EOGA GEX & DEX Order Book")
+    # Determiniamo il colore del "led" di stato (Verde o Rosso)
+    status_color = "#00E676" if "APERTO" in stato_mercato else "#FF3B30"
+    stato_pulito = stato_mercato.replace('🟢', '').replace('🔴', '').strip()
+    
+    # Costruzione della Top Bar orizzontale
+    top_bar_html = f"""
+    <div style="display: flex; justify-content: space-between; align-items: center; background: linear-gradient(145deg, #1A1D24 0%, #131722 100%); padding: 20px 30px; border-radius: 12px; border: 1px solid #2B3139; box-shadow: 0px 8px 20px rgba(0,0,0,0.4); margin-bottom: 25px;">
+        
+        <div style="flex: 1;">
+            <h1 style="margin: 0; color: #E0E3EB; font-size: 28px; font-family: 'Arial Black', sans-serif; text-transform: uppercase; letter-spacing: 1.5px;">🎯 EOGA <span style="color: #FFD700;">GEX</span></h1>
+            <span style="color: #8C92A4; font-size: 13px; text-transform: uppercase; letter-spacing: 2px;">Advanced Order Book</span>
+        </div>
+        
+        <div style="display: flex; gap: 40px; align-items: center; justify-content: center; flex: 2;">
+            <div style="text-align: right;">
+                <span style="color: #8C92A4; font-size: 12px; text-transform: uppercase; font-weight: 600; letter-spacing: 1px;">{ticker} (Spot)</span><br>
+                <span style="color: #FFFFFF; font-size: 34px; font-weight: 900; font-family: 'Courier New', monospace; text-shadow: 0 0 10px rgba(255,255,255,0.1);">${etf_realtime_nasdaq:.2f}</span>
+            </div>
+            
+            <div style="height: 50px; width: 2px; background: linear-gradient(to bottom, transparent, #3A414D, transparent);"></div>
+            
+            <div style="text-align: left;">
+                <span style="color: #8C92A4; font-size: 12px; text-transform: uppercase; font-weight: 600; letter-spacing: 1px;">{nome_future} (Future)</span><br>
+                <span style="color: #FFFFFF; font-size: 34px; font-weight: 900; font-family: 'Courier New', monospace; text-shadow: 0 0 10px rgba(255,255,255,0.1);">{future_realtime_yf:.2f}</span>
+            </div>
+        </div>
+        
+        <div style="flex: 1; text-align: right;">
+            <div style="display: inline-flex; align-items: center; gap: 10px; background-color: rgba(255,255,255,0.03); padding: 8px 15px; border-radius: 30px; border: 1px solid rgba(255,255,255,0.08);">
+                <div style="width: 10px; height: 10px; border-radius: 50%; background-color: {status_color}; box-shadow: 0 0 8px {status_color};"></div>
+                <span style="color: #E0E3EB; font-weight: bold; font-size: 14px; letter-spacing: 1px;">{stato_pulito}</span>
+            </div>
+            <div style="margin-top: 8px; color: #8C92A4; font-size: 12px; font-family: monospace;">{ora_it}</div>
+        </div>
+        
+    </div>
+    """
+    st.markdown(top_bar_html, unsafe_allow_html=True)
     
     # =====================================================================
     # DASHBOARD GRAFICA - FILTRI E TOGGLE DINAMICO
