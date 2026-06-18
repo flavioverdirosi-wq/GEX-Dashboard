@@ -334,7 +334,7 @@ if pagina == "📊 Dashboard Grafica (GEX)":
     with col_f1:
         scadenza_sel = st.selectbox("Scadenza Analisi:", scadenze_disponibili)
     with col_f2:
-        filtro_percentuale = st.slider("Zoom Grafico (+/- % dal prezzo)", min_value=1, max_value=20, value=3)
+        filtro_percentuale = st.slider("Zoom Grafico (+/- % dal prezzo)", min_value=1, max_value=20, value=1)
     with col_f3:
         tipo_visualizzazione = st.radio("Visualizza Istogramma:", ["GEX (Gamma)", "DEX (Delta)"], horizontal=True)
     with col_f4:
