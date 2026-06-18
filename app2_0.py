@@ -328,13 +328,13 @@ if pagina == "📊 Dashboard Grafica (GEX)":
     st.title("🎯 EOGA GEX & DEX Order Book")
     
     # =====================================================================
-    # DASHBOARD GRAFICA - FILTRI E TOGGLE QQQ/NQ
+    # DASHBOARD GRAFICA - FILTRI E TOGGLE DINAMICO ETF/FUTURE
     # =====================================================================
     col_f1, col_f2, col_f3, col_f4 = st.columns(4)
     with col_f1:
         scadenza_sel = st.selectbox("Scadenza Analisi:", scadenze_disponibili)
     with col_f2:
-        filtro_percentuale = st.slider("Zoom Grafico (+/- % dal prezzo)", min_value=1, max_value=20, value=1)
+        filtro_percentuale = st.slider("Zoom Grafico (+/- % dal prezzo)", min_value=1, max_value=20, value=3)
     with col_f3:
         tipo_visualizzazione = st.radio("Visualizza Istogramma:", ["GEX (Gamma)", "DEX (Delta)"], horizontal=True)
     with col_f4:
@@ -391,22 +391,15 @@ if pagina == "📊 Dashboard Grafica (GEX)":
     df_raw = pd.DataFrame(struttura)
     if df_raw.empty: st.stop()
 
+    # Raggruppiamo preservando entrambe le colonne di prezzo
     df = df_raw.groupby(["Strike_ETF", "Strike_Future"]).sum().reset_index()
 
-    # LOGICA TOGGLE DINAMICA
+    # ==========================================
+    # APPLICAZIONE LOGICA TOGGLE DINAMICA
+    # ==========================================
     colonna_y = "Strike_ETF" if mostra_etf else "Strike_Future"
     spot_riferimento = etf_realtime_nasdaq if mostra_etf else future_realtime_yf
     nome_asset = ticker if mostra_etf else nome_future
-
-    # Raggruppiamo preservando entrambe le colonne di prezzo
-    df = df_raw.groupby(["Strike_QQQ", "Strike_Future"]).sum().reset_index()
-
-    # ==========================================
-    # APPLICAZIONE LOGICA TOGGLE QQQ/NQ
-    # ==========================================
-    colonna_y = "Strike_QQQ" if mostra_qqq else "Strike_Future"
-    spot_riferimento = qqq_realtime_nasdaq if mostra_qqq else nq_realtime_yf
-    nome_asset = "QQQ" if mostra_qqq else "NQ"
 
     limite_inf = spot_riferimento * (1 - (filtro_percentuale / 100.0))
     limite_sup = spot_riferimento * (1 + (filtro_percentuale / 100.0))
@@ -414,7 +407,7 @@ if pagina == "📊 Dashboard Grafica (GEX)":
     df_utile = df[(df[colonna_y] >= limite_inf) & (df[colonna_y] <= limite_sup)].copy()
     if df_utile.empty: df_utile = df.copy()
 
-    # Assicuriamoci che i dati siano ordinati per lo strike per calcolare l'HVL correttamente
+    # Ordinamento per calcolare l'HVL correttamente
     df_utile = df_utile.sort_values(colonna_y).reset_index(drop=True)
 
     call_wall = df_utile.loc[df_utile["GEX"].idxmax()][colonna_y]
@@ -427,19 +420,16 @@ if pagina == "📊 Dashboard Grafica (GEX)":
     idx_flip = np.where(np.diff(np.sign(df_utile["GEX_Cum"])) != 0)[0]
     
     if len(idx_flip) > 0:
-        # Prende l'indice dove avviene il cambio e quello immediatamente successivo
         indice_sotto = idx_flip[0]
         indice_sopra = indice_sotto + 1
         
         if indice_sopra < len(df_utile):
             strike_sotto = df_utile.iloc[indice_sotto][colonna_y]
             strike_sopra = df_utile.iloc[indice_sopra][colonna_y]
-            # HVL calcolato matematicamente al 50% tra i due livelli
             gamma_flip = (strike_sotto + strike_sopra) / 2.0
         else:
             gamma_flip = df_utile.iloc[indice_sotto][colonna_y]
     else:
-        # Fallback se non ci sono cambi di segno
         gamma_flip = df_utile.loc[df_utile["GEX_Cum"].abs().idxmin()][colonna_y]
 
     metric_col = "GEX" if tipo_visualizzazione == "GEX (Gamma)" else "DEX"
@@ -453,7 +443,7 @@ if pagina == "📊 Dashboard Grafica (GEX)":
     pcr_oi = tot_put_oi / tot_call_oi if tot_call_oi > 0 else 0.0
 
     # ==========================================
-    # TESTI PER I TOOLTIP (HELP) FORMATTATI IN MARKDOWN
+    # TESTI PER I TOOLTIP (HELP)
     # ==========================================
     help_call_wall = """
     **🟢 CALL WALL (Il Magnete e il Tetto)**
@@ -464,7 +454,7 @@ if pagina == "📊 Dashboard Grafica (GEX)":
 
     help_gamma_flip = """
     **🟡 GAMMA FLIP (Punto di Flesso del Regime)**
-    * **Cos'è:** Il livello di "Zero Gamma", dove l'esposizione totale passa da positiva a negativa o viceversa.
+    * **Cos'è:** Il livello di "Zero Gamma", dove l'esposizione totale passa da positiva a negativa.
     * **Meccanica:** Sopra il livello i dealer assorbono volatilità (mercato tranquillo). Sotto il livello la amplificano (mercato tossico).
     * **Operatività:** È il filtro direzionale primario. Sotto il Gamma Flip le discese diventano veloci e verticali. Evitare long avventati.
     """
@@ -499,11 +489,9 @@ if pagina == "📊 Dashboard Grafica (GEX)":
         textfont=dict(size=14), cliponaxis=False
     ))
 
-    # Linea HVL mediatrice
     fig.add_hline(y=gamma_flip, line_dash="solid", line_color="#FFD700", line_width=3, 
                   annotation_text=f"HVL (FLIP POINT): {gamma_flip:.2f}", annotation_font_size=16, annotation_position="top left")
     
-    # Linee Call Wall, Put Wall e Spot Live
     fig.add_hline(y=call_wall, line_dash="dash", line_color="#32CD32", annotation_text=f"CALL WALL: {call_wall:.0f}", annotation_font_size=14)
     fig.add_hline(y=put_wall, line_dash="dash", line_color="#FF3B30", annotation_text=f"PUT WALL: {put_wall:.0f}", annotation_font_size=14)
     fig.add_hline(y=spot_riferimento, line_color="#00FFFF", line_width=2, annotation_text=f"PREZZO SPOT {nome_asset} LIVE: {spot_riferimento:.2f}", annotation_font_size=14)
