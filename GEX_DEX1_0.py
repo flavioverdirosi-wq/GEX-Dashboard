@@ -368,6 +368,38 @@ if pagina == "📊 Dashboard Grafica (GEX)":
         mostra_etf = st.checkbox(f"🔄 Mostra livelli in {ticker}", value=False)
 
     # --- PANNELLO INFORMATIVO E TOGGLE MOTORE HVL ---
+   # --- PANNELLO INFORMATIVO E TOGGLE MOTORE HVL ---
+    st.markdown("<br>", unsafe_allow_html=True)
+    with st.expander("📖 Guida Strategica: Il Mercato Invisibile (Luca Giusti)"):
+        st.markdown("""
+        La meccanica di mercato è guidata dall'hedging dei Market Maker per restare neutrali al rischio. 
+        [Approfondimento Teoria: Il Mercato Invisibile](https://www.lucagiusti.it/2026/04/29/il-mercato-invisibile-gex-e-dex/)
+        """)
+        
+        col_t1, col_t2 = st.columns(2)
+        with col_t1:
+            st.markdown("""
+            **🟢 CALL WALL (Resistenza):** Soffitto meccanico. I Dealer vendono sui rialzi.
+            * *Tattica:* Resistenza forte. Valuta Take-Profit sui Long o ingressi Short.
+            
+            **🟡 HVL (FLIP POINT):** Lo "Zero Gamma". Separa il regime stabilizzatore da quello amplificatore.
+            * *Tattica:* Sotto=Volatilità alta (Short Gamma); Sopra=Trend direzionale (Long Gamma).
+            """)
+        with col_t2:
+            st.markdown("""
+            **🔴 PUT WALL (Supporto):** Pavimento meccanico. I Dealer comprano sui ribassi.
+            * *Tattica:* Supporto forte. Area ideale per Buy-the-Dip o chiusura Short.
+            
+            **⚖️ P/C RATIO (OI):** Bilancia del sentiment.
+            * *Tattica:* >1.2 Pessimismo (rischio squeeze); <0.8 Ottimismo (ipercomprato).
+            """)
+
+        st.info("""
+        **REGIMI GEX:** - **Positivo (Sopra HVL):** I Dealer stabilizzano. "Compra basso, vende alto" -> **Volatilità compressa**.
+        - **Negativo (Sotto HVL):** I Dealer amplificano. "Vende basso, compra alto" -> **Volatilità esplosiva**.
+        """)
+        
+        usa_hvl_istituzionale = st.checkbox("⚙️ Attiva Calcolo HVL Istituzionale (Metodo Vettoriale)", value=False)
     st.markdown("<br>", unsafe_allow_html=True)
     with st.expander("🔬 Info Motore HVL (Gamma Flip) & Attivazione Metodo Istituzionale"):
         st.markdown("""
