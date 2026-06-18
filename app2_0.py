@@ -332,25 +332,7 @@ opex_mensile_calcolato = trova_prossimo_opex_mensile()
 # =====================================================================
 # PAGINA 1: DASHBOARD GRAFICA
 # =====================================================================
-if pagina == "📊 Dashboard Grafica (GEX)":
-    # Determiniamo il colore del "led" di stato (Verde o Rosso)
-    status_color = "#00E676" if "APERTO" in stato_mercato else "#FF3B30"
-    stato_pulito = stato_mercato.replace('🟢', '').replace('🔴', '').strip()
-    colore_bg = "#00C853" if "APERTO" in stato_mercato else "#131722"
-colore_text = "#FFFFFF" if "APERTO" in stato_mercato else "#B2B5BE"
 
-html_box = f"""
-<div style="background-color: {colore_bg}; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-    <h4 style="margin: 0; color: {colore_text}; font-size: 14px; opacity: 0.8;">{ticker} (Real-Time Nasdaq)</h4>
-    <h1 style="margin: 0; color: {colore_text}; font-size: 32px;">${etf_realtime_nasdaq:.2f}</h1>
-    <hr style="border-color: {colore_text}; opacity: 0.2; margin: 10px 0;">
-    <h4 style="margin: 0; color: {colore_text}; font-size: 14px; opacity: 0.8;">{nome_future}=F (Real-Time Future)</h4>
-    <h1 style="margin: 0; color: {colore_text}; font-size: 28px;">{future_realtime_yf:.2f}</h1>
-    <p style="margin: 10px 0 0 0; color: {colore_text}; font-size: 16px; font-weight: bold;">{stato_mercato}</p>
-    <p style="margin: 2px 0 0 0; color: {colore_text}; font-size: 13px; opacity: 0.9;">{ora_it}</p>
-</div>
-"""
-st.sidebar.markdown(html_box, unsafe_allow_html=True)
     
     # =====================================================================
     # DASHBOARD GRAFICA - FILTRI E TOGGLE DINAMICO
