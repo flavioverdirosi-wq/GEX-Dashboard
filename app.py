@@ -301,19 +301,22 @@ if pagina == "📊 Dashboard Grafica (GEX)":
     st.title("🎯 EOGA GEX & DEX Order Book")
     
     # =====================================================================
-    # DASHBOARD GRAFICA - FILTRI E CALCOLO VOLATILITÀ LIVE
+    # DASHBOARD GRAFICA - FILTRI E TOGGLE QQQ/NQ
     # =====================================================================
-    col_f1, col_f2, col_f3 = st.columns(3)
+    col_f1, col_f2, col_f3, col_f4 = st.columns(4)
     with col_f1:
         scadenza_sel = st.selectbox("Scadenza Analisi:", scadenze_disponibili)
     with col_f2:
         filtro_percentuale = st.slider("Zoom Grafico (+/- % dal prezzo)", min_value=1, max_value=20, value=3)
     with col_f3:
         tipo_visualizzazione = st.radio("Visualizza Istogramma:", ["GEX (Gamma)", "DEX (Delta)"], horizontal=True)
+    with col_f4:
+        st.markdown("<br>", unsafe_allow_html=True) # Spaziatura per allineamento
+        # NUOVA SPUNTA: Switch QQQ vs NQ
+        mostra_qqq = st.checkbox("🔄 Mostra livelli in QQQ", value=False, help="Visualizza asse Y, Call/Put Wall e HVL sul prezzo dell'ETF QQQ invece che sul Future NQ.")
     
     # Integrazione VIX Live come motore per le Greche
     vix_live, vxn_live = get_vix_data()
-    # Il VIX alimenta il calcolo delle Greche (sigma)
     iv_stimata = vix_live / 100.0
     st.info(f"⚙️ Motore Greche alimentato da VIX Live: {vix_live:.2f}% (Rif. VXN: {vxn_live:.2f}%)")
         
@@ -332,63 +335,85 @@ if pagina == "📊 Dashboard Grafica (GEX)":
     giorni = (data_scad - oggi).days
     t_anno = (0.5 / 365.0) if giorni <= 0 else (giorni / 365.0)
 
+    # ==========================================
+    # ELABORAZIONE STRUTTURA GEX E DEX (Doppio Strike)
+    # ==========================================
     struttura = []
     for _, riga in df_nasdaq_grafico.iterrows():
-        K = riga["strike"]
+        K = riga["strike"] # Questo è lo strike base in QQQ
         oi_call = riga.get("c_Openinterest", 0)
         oi_put = riga.get("p_Openinterest", 0)
         
         if oi_call > 0:
             d_c, _, gamma_c = calcola_greche_base(spot_price_reale, K, t_anno, iv_stimata)
-            struttura.append({"Strike_Future": K * ratio_esatto, "GEX": gamma_c * oi_call * 100 * (spot_price_reale**2) * 0.01, "DEX": d_c * oi_call * 100 * spot_price_reale * 0.01})
+            struttura.append({
+                "Strike_QQQ": K, 
+                "Strike_Future": K * ratio_esatto, 
+                "GEX": gamma_c * oi_call * 100 * (spot_price_reale**2) * 0.01, 
+                "DEX": d_c * oi_call * 100 * spot_price_reale * 0.01
+            })
             
         if oi_put > 0:
             _, d_p, gamma_p = calcola_greche_base(spot_price_reale, K, t_anno, iv_stimata)
-            struttura.append({"Strike_Future": K * ratio_esatto, "GEX": -gamma_p * oi_put * 100 * (spot_price_reale**2) * 0.01, "DEX": d_p * oi_put * 100 * spot_price_reale * 0.01})
+            struttura.append({
+                "Strike_QQQ": K, 
+                "Strike_Future": K * ratio_esatto, 
+                "GEX": -gamma_p * oi_put * 100 * (spot_price_reale**2) * 0.01, 
+                "DEX": d_p * oi_put * 100 * spot_price_reale * 0.01
+            })
 
     df_raw = pd.DataFrame(struttura)
     if df_raw.empty: st.stop()
 
-    df = df_raw.groupby("Strike_Future").sum().reset_index()
+    # Raggruppiamo preservando entrambe le colonne di prezzo
+    df = df_raw.groupby(["Strike_QQQ", "Strike_Future"]).sum().reset_index()
 
-    # Ora lo zoom si centra sul prezzo in tempo reale del Future
-    limite_inf = nq_realtime_yf * (1 - (filtro_percentuale / 100.0))
-    limite_sup = nq_realtime_yf * (1 + (filtro_percentuale / 100.0))
+    # ==========================================
+    # APPLICAZIONE LOGICA TOGGLE QQQ/NQ
+    # ==========================================
+    colonna_y = "Strike_QQQ" if mostra_qqq else "Strike_Future"
+    spot_riferimento = qqq_realtime_nasdaq if mostra_qqq else nq_realtime_yf
+    nome_asset = "QQQ" if mostra_qqq else "NQ"
 
-    df_utile = df[(df["Strike_Future"] >= limite_inf) & (df["Strike_Future"] <= limite_sup)].copy()
+    limite_inf = spot_riferimento * (1 - (filtro_percentuale / 100.0))
+    limite_sup = spot_riferimento * (1 + (filtro_percentuale / 100.0))
+
+    df_utile = df[(df[colonna_y] >= limite_inf) & (df[colonna_y] <= limite_sup)].copy()
     if df_utile.empty: df_utile = df.copy()
 
-    call_wall = df_utile.loc[df_utile["GEX"].idxmax()]["Strike_Future"]
-    put_wall = df_utile.loc[df_utile["GEX"].idxmin()]["Strike_Future"]
+    # Assicuriamoci che i dati siano ordinati per lo strike per calcolare l'HVL correttamente
+    df_utile = df_utile.sort_values(colonna_y).reset_index(drop=True)
 
+    call_wall = df_utile.loc[df_utile["GEX"].idxmax()][colonna_y]
+    put_wall = df_utile.loc[df_utile["GEX"].idxmin()][colonna_y]
+
+    # ==========================================
+    # CALCOLO HVL (FLIP POINT) ESATTAMENTE A METÀ
+    # ==========================================
     df_utile["GEX_Cum"] = df_utile["GEX"].cumsum()
     idx_flip = np.where(np.diff(np.sign(df_utile["GEX_Cum"])) != 0)[0]
-    gamma_flip = df_utile.iloc[idx_flip[0]]["Strike_Future"] if len(idx_flip) > 0 else df_utile.loc[df_utile["GEX_Cum"].abs().idxmin()]["Strike_Future"]
+    
+    if len(idx_flip) > 0:
+        # Prende l'indice dove avviene il cambio e quello immediatamente successivo
+        indice_sotto = idx_flip[0]
+        indice_sopra = indice_sotto + 1
+        
+        if indice_sopra < len(df_utile):
+            strike_sotto = df_utile.iloc[indice_sotto][colonna_y]
+            strike_sopra = df_utile.iloc[indice_sopra][colonna_y]
+            # HVL calcolato matematicamente al 50% tra i due livelli
+            gamma_flip = (strike_sotto + strike_sopra) / 2.0
+        else:
+            gamma_flip = df_utile.iloc[indice_sotto][colonna_y]
+    else:
+        # Fallback se non ci sono cambi di segno
+        gamma_flip = df_utile.loc[df_utile["GEX_Cum"].abs().idxmin()][colonna_y]
 
     metric_col = "GEX" if tipo_visualizzazione == "GEX (Gamma)" else "DEX"
     df_utile["Colore"] = np.where(df_utile[metric_col] >= 0, "#32CD32", "#FF3B30")
 
-    fig = go.Figure()
-    fig.add_trace(go.Bar(
-        x=df_utile[metric_col], 
-        y=df_utile["Strike_Future"], 
-        orientation='h',
-        marker_color=df_utile["Colore"], 
-        text=df_utile["Strike_Future"].round(0), 
-        textposition='outside',
-        textfont=dict(size=16, color="black")  # <-- Parametro aggiunto per ingrandire il testo
-    ))
-
-    fig.add_hline(y=call_wall, line_dash="dash", line_color="#32CD32", annotation_text=f"CALL WALL: {call_wall:.0f}")
-    fig.add_hline(y=gamma_flip, line_dash="dash", line_color="#FFD700", annotation_text=f"GAMMA FLIP: {gamma_flip:.0f}")
-    fig.add_hline(y=put_wall, line_dash="dash", line_color="#FF3B30", annotation_text=f"PUT WALL: {put_wall:.0f}")
-   # La linea azzurra ora si muove con il feed live di Yahoo Finance
-    fig.add_hline(y=nq_realtime_yf, line_color="#00FFFF", line_width=2, annotation_text=f"PREZZO SPOT NQ LIVE: {nq_realtime_yf:.2f}", annotation_font_size=14)
-
-    fig.update_layout(height=800, template="plotly_dark", xaxis_title=f"Esposizione Monetaria ({metric_col})", yaxis_title="Prezzo del Future NQ", yaxis=dict(autorange=True, type='linear'), showlegend=False)
-
     # ==========================================
-    # CALCOLO PUT/CALL RATIO (OPEN INTEREST) E METRICHE
+    # CALCOLO PUT/CALL RATIO E METRICHE
     # ==========================================
     tot_call_oi = df_nasdaq_grafico['c_Openinterest'].sum()
     tot_put_oi = df_nasdaq_grafico['p_Openinterest'].sum()
@@ -425,42 +450,41 @@ if pagina == "📊 Dashboard Grafica (GEX)":
     * Valori **< 1**: Prevalenza di Call (Sentiment speculativo/rialzista).
     """
 
-    # ==========================================
-    # METRICHE CON HELP INTEGRATO
-    # ==========================================
-   # ==========================================
-    # METRICHE AGGIORNATE CON HVL (FLIP POINT)
-    # ==========================================
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("🟢 CALL WALL NQ", f"{call_wall:.0f}", help=help_call_wall)
-    # Ora il Gamma Flip viene visualizzato come HVL
-    c2.metric("🟡 HVL (FLIP POINT)", f"{gamma_flip:.0f}", help=help_gamma_flip)
-    c3.metric("🔴 PUT WALL NQ", f"{put_wall:.0f}", help=help_put_wall)
+    c1.metric(f"🟢 CALL WALL {nome_asset}", f"{call_wall:.0f}", help=help_call_wall)
+    c2.metric(f"🟡 HVL (FLIP POINT) {nome_asset}", f"{gamma_flip:.2f}", help=help_gamma_flip)
+    c3.metric(f"🔴 PUT WALL {nome_asset}", f"{put_wall:.0f}", help=help_put_wall)
     c4.metric("⚖️ P/C RATIO (OI)", f"{pcr_oi:.2f}", help=help_pcr)
     
     # ==========================================
-    # GRAFICO CON LINEA HVL SEPARATRICE
+    # RENDERIZZAZIONE GRAFICO PLOTLY
     # ==========================================
     fig = go.Figure()
     fig.add_trace(go.Bar(
-        x=df_utile[metric_col], y=df_utile["Strike_Future"], orientation='h',
-        marker_color=df_utile["Colore"], text=df_utile["Strike_Future"].round(0), textposition='outside',
+        x=df_utile[metric_col], y=df_utile[colonna_y], orientation='h',
+        marker_color=df_utile["Colore"], text=df_utile[colonna_y].round(0), textposition='outside',
         textfont=dict(size=14), cliponaxis=False
     ))
 
-    # Aggiungiamo la linea HVL come separatore visivo netto
+    # Linea HVL mediatrice
     fig.add_hline(y=gamma_flip, line_dash="solid", line_color="#FFD700", line_width=3, 
-                  annotation_text=f"HVL (FLIP POINT): {gamma_flip:.0f}", annotation_font_size=16, annotation_position="top left")
+                  annotation_text=f"HVL (FLIP POINT): {gamma_flip:.2f}", annotation_font_size=16, annotation_position="top left")
     
-    # Aggiungiamo Call Wall e Put Wall
+    # Linee Call Wall, Put Wall e Spot Live
     fig.add_hline(y=call_wall, line_dash="dash", line_color="#32CD32", annotation_text=f"CALL WALL: {call_wall:.0f}", annotation_font_size=14)
     fig.add_hline(y=put_wall, line_dash="dash", line_color="#FF3B30", annotation_text=f"PUT WALL: {put_wall:.0f}", annotation_font_size=14)
-    fig.add_hline(y=nq_realtime_yf, line_color="#00FFFF", line_width=2, annotation_text=f"PREZZO SPOT NQ LIVE: {nq_realtime_yf:.2f}", annotation_font_size=14)
+    fig.add_hline(y=spot_riferimento, line_color="#00FFFF", line_width=2, annotation_text=f"PREZZO SPOT {nome_asset} LIVE: {spot_riferimento:.2f}", annotation_font_size=14)
 
-    fig.update_layout(height=800, template="plotly_dark", xaxis_title=f"Esposizione Monetaria ({metric_col})", yaxis_title="Prezzo del Future NQ", yaxis=dict(autorange=True, type='linear'), showlegend=False)
+    fig.update_layout(
+        height=800, 
+        template="plotly_dark", 
+        xaxis_title=f"Esposizione Monetaria ({metric_col})", 
+        yaxis_title=f"Prezzo del Sottostante ({nome_asset})", 
+        yaxis=dict(autorange=True, type='linear'), 
+        showlegend=False
+    )
     
     st.plotly_chart(fig, use_container_width=True)
-
 # =====================================================================
 # PAGINA 2: REPLICA SITO NASDAQ CON HIGHLIGHT SPOT
 # =====================================================================
