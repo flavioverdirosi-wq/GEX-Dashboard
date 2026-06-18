@@ -520,7 +520,7 @@ if pagina == "📊 Dashboard Grafica (GEX)":
 # =====================================================================
 # PAGINA 2: REPLICA SITO NASDAQ CON HIGHLIGHT SPOT
 # =====================================================================
-    elif pagina == "🗄️ Database Ufficiale":
+elif pagina == "🗄️ Database Ufficiale":
     # Mappa titoli completi per abbellire l'intestazione
     NOMI_COMPLETI = {
         "QQQ": "Invesco QQQ Trust, Series 1",
