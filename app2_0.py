@@ -479,30 +479,85 @@ if pagina == "📊 Dashboard Grafica (GEX)":
     c3.metric(f"🔴 PUT WALL {nome_asset}", f"{put_wall:.0f}", help=help_put_wall)
     c4.metric("⚖️ P/C RATIO (OI)", f"{pcr_oi:.2f}", help=help_pcr)
     
+# ==========================================
+    # RENDERIZZAZIONE GRAFICO PLOTLY (OTTIMIZZATO)
     # ==========================================
-    # RENDERIZZAZIONE GRAFICO PLOTLY
-    # ==========================================
+    
+    # 1. Creiamo liste dinamiche per far risaltare visivamente i livelli chiave
+    testi_barre = []
+    dimensioni_testo = []
+    colori_testo = []
+
+    for val in df_utile[colonna_y]:
+        val_round = int(round(val))
+        
+        # Ingrandiamo e marchiamo i livelli operativi
+        if val == call_wall:
+            testi_barre.append(f"<b>{val_round} 🟢 CALL WALL</b>")
+            dimensioni_testo.append(18)
+            colori_testo.append("black")
+        elif val == put_wall:
+            testi_barre.append(f"<b>{val_round} 🔴 PUT WALL</b>")
+            dimensioni_testo.append(18)
+            colori_testo.append("black")
+        else:
+            testi_barre.append(f"<b>{val_round}</b>")
+            dimensioni_testo.append(13) # Più piccoli per non creare confusione
+            colori_testo.append("#111111") # Nero molto scuro
+
     fig = go.Figure()
+    
+    # 2. Renderizziamo le barre con il font in grassetto pesante
     fig.add_trace(go.Bar(
-        x=df_utile[metric_col], y=df_utile[colonna_y], orientation='h',
-        marker_color=df_utile["Colore"], text=df_utile[colonna_y].round(0), textposition='outside',
-        textfont=dict(size=14), cliponaxis=False
+        x=df_utile[metric_col], 
+        y=df_utile[colonna_y], 
+        orientation='h',
+        marker_color=df_utile["Colore"], 
+        text=testi_barre, 
+        textposition='outside',
+        textfont=dict(size=dimensioni_testo, color=colori_testo, family="Arial Black"), 
+        cliponaxis=False
     ))
 
-    fig.add_hline(y=gamma_flip, line_dash="solid", line_color="#FFD700", line_width=3, 
-                  annotation_text=f"HVL (FLIP POINT): {gamma_flip:.2f}", annotation_font_size=16, annotation_position="top left")
+    # 3. Linee Orizzontali: layer="below" le spinge DIETRO ai testi. Aggiunto bgcolor per massima leggibilità.
     
-    fig.add_hline(y=call_wall, line_dash="dash", line_color="#32CD32", annotation_text=f"CALL WALL: {call_wall:.0f}", annotation_font_size=14)
-    fig.add_hline(y=put_wall, line_dash="dash", line_color="#FF3B30", annotation_text=f"PUT WALL: {put_wall:.0f}", annotation_font_size=14)
-    fig.add_hline(y=spot_riferimento, line_color="#00FFFF", line_width=2, annotation_text=f"PREZZO SPOT {nome_asset} LIVE: {spot_riferimento:.2f}", annotation_font_size=14)
+    # Linea HVL mediatrice
+    fig.add_hline(y=gamma_flip, line_dash="solid", line_color="#FFB300", line_width=4, layer="below",
+                  annotation_text=f"<b>HVL (FLIP POINT): {gamma_flip:.2f}</b>", 
+                  annotation_font_size=15, annotation_font_color="black",
+                  annotation_bgcolor="#FFF3E0", annotation_bordercolor="#FFB300", annotation_borderpad=4,
+                  annotation_position="top left")
+    
+    # Linea Call Wall (Annotazione a SINISTRA per non sovrapporsi al testo della barra a destra)
+    fig.add_hline(y=call_wall, line_dash="dash", line_color="#32CD32", line_width=2, layer="below",
+                  annotation_text=f"<b>CALL WALL: {call_wall:.0f}</b>", 
+                  annotation_font_size=14, annotation_font_color="black",
+                  annotation_bgcolor="#E8F5E9", annotation_borderpad=3,
+                  annotation_position="top left")
+                  
+    # Linea Put Wall (Annotazione a DESTRA per non sovrapporsi al testo della barra a sinistra)
+    fig.add_hline(y=put_wall, line_dash="dash", line_color="#FF3B30", line_width=2, layer="below",
+                  annotation_text=f"<b>PUT WALL: {put_wall:.0f}</b>", 
+                  annotation_font_size=14, annotation_font_color="black",
+                  annotation_bgcolor="#FFEBEE", annotation_borderpad=3,
+                  annotation_position="bottom right")
+                  
+    # Prezzo Spot Live
+    fig.add_hline(y=spot_riferimento, line_color="#00FFFF", line_width=3, layer="below",
+                  annotation_text=f"<b>SPOT {nome_asset}: {spot_riferimento:.2f}</b>", 
+                  annotation_font_size=15, annotation_font_color="black",
+                  annotation_bgcolor="#E0FFFF", annotation_bordercolor="#00FFFF", annotation_borderpad=4,
+                  annotation_position="bottom right")
 
+    # 4. Aggiorniamo il layout (Sfondo bianco per far esplodere il nero del testo)
     fig.update_layout(
         height=800, 
-        template="plotly_dark", 
-        xaxis_title=f"Esposizione Monetaria ({metric_col})", 
-        yaxis_title=f"Prezzo del Sottostante ({nome_asset})", 
-        yaxis=dict(autorange=True, type='linear'), 
-        showlegend=False
+        template="plotly_white", # Ottimale per contrasto testi neri
+        xaxis_title=f"<b>Esposizione Monetaria ({metric_col})</b>", 
+        yaxis_title=f"<b>Prezzo del Sottostante ({nome_asset})</b>", 
+        yaxis=dict(autorange=True, type='linear', tickfont=dict(color="black", size=12)), 
+        showlegend=False,
+        margin=dict(l=50, r=150, t=50, b=50) # Margine destro maggiorato per far respirare le scritte
     )
     
     st.plotly_chart(fig, use_container_width=True)
