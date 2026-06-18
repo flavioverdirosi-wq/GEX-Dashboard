@@ -366,8 +366,7 @@ if pagina == "📊 Dashboard Grafica (GEX)":
     with col_f4:
         st.markdown("<br>", unsafe_allow_html=True)
         mostra_etf = st.checkbox(f"🔄 Mostra livelli in {ticker}", value=False)
-
-    # --- PANNELLO INFORMATIVO E TOGGLE MOTORE HVL ---
+       
    # --- PANNELLO INFORMATIVO E TOGGLE MOTORE HVL ---
     st.markdown("<br>", unsafe_allow_html=True)
     with st.expander("📖 Guida Strategica: Il Mercato Invisibile (Luca Giusti)"):
@@ -398,8 +397,6 @@ if pagina == "📊 Dashboard Grafica (GEX)":
         **REGIMI GEX:** - **Positivo (Sopra HVL):** I Dealer stabilizzano. "Compra basso, vende alto" -> **Volatilità compressa**.
         - **Negativo (Sotto HVL):** I Dealer amplificano. "Vende basso, compra alto" -> **Volatilità esplosiva**.
         """)
-        
-        usa_hvl_istituzionale = st.checkbox("⚙️ Attiva Calcolo HVL Istituzionale (Metodo Vettoriale)", value=False)
     st.markdown("<br>", unsafe_allow_html=True)
     with st.expander("🔬 Info Motore HVL (Gamma Flip) & Attivazione Metodo Istituzionale"):
         st.markdown("""
