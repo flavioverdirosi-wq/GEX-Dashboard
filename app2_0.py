@@ -176,7 +176,41 @@ pagina = st.sidebar.radio("Seleziona la vista:", ["📊 Dashboard Grafica (GEX)"
 
 st.sidebar.markdown("---")
 st.sidebar.header("⚙️ Sincronizzazione Dati")
-ticker = st.sidebar.text_input("Ticker Sottostante (es. QQQ)", "QQQ").upper()
+
+# ==========================================
+# 1. GESTIONE INPUT TICKER CON BOTTONE
+# ==========================================
+col_t1, col_t2 = st.sidebar.columns([3, 1])
+with col_t1:
+    ticker_input = st.text_input("Ticker Sottostante (es. QQQ, SPY)", "QQQ").upper()
+with col_t2:
+    st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+    btn_vai = st.button("Vai 🚀", use_container_width=True)
+
+# Gestione session_state per non perdere il ticker ai ricaricamenti
+if "ticker_attivo" not in st.session_state:
+    st.session_state.ticker_attivo = "QQQ"
+
+if btn_vai:
+    st.session_state.ticker_attivo = ticker_input
+    st.cache_data.clear() # Pulisce la cache per forzare i nuovi dati
+
+ticker = st.session_state.ticker_attivo
+
+# ==========================================
+# 2. MAPPATURA DINAMICA ETF -> FUTURE
+# ==========================================
+MAPPATURA_FUTURES = {
+    "QQQ": {"simbolo": "NQU26.CME", "nome": "NQ"},
+    "SPY": {"simbolo": "ESU26.CME", "nome": "ES"},
+    "IWM": {"simbolo": "RTYU26.CME", "nome": "RTY"},
+    "DIA": {"simbolo": "YMU26.CME", "nome": "YM"}
+}
+
+# Fallback se metti un ticker non mappato (usa l'ETF stesso per entrambi)
+info_future = MAPPATURA_FUTURES.get(ticker, {"simbolo": ticker, "nome": ticker})
+ticker_future = info_future["simbolo"]
+nome_future = info_future["nome"]
 
 tk = inizializza_ticker(ticker)
 spot_price_reale = scarica_prezzo_spot(ticker)
@@ -185,7 +219,7 @@ if spot_price_reale is None:
     st.sidebar.error(f"Impossibile scaricare il prezzo per {ticker}.")
     st.stop()
 
-# Recupera la chiusura ufficiale (ore 22:00 IT) forzando lo storico giornaliero
+# Recupera la chiusura ufficiale (ore 22:00 IT)
 try:
     storico_daily = tk.history(period="5d", auto_adjust=False)
     if "APERTO" in verifica_stato_mercato():
@@ -196,51 +230,47 @@ except:
     prezzo_chiusura_api = spot_price_reale
 
 # ==========================================
-# OVERRIDE MANUALE CHIUSURA
+# OVERRIDE MANUALE CHIUSURA ETF
 # ==========================================
-usa_chiusura_manuale = st.sidebar.checkbox("Modifica Chiusura QQQ a mano", value=False)
+usa_chiusura_manuale = st.sidebar.checkbox(f"Modifica Chiusura {ticker} a mano", value=False)
 
 if usa_chiusura_manuale:
-    prezzo_chiusura = st.sidebar.number_input("Prezzo QQQ (Chiusura 22:00 IT)", value=float(prezzo_chiusura_api), step=0.10)
+    prezzo_chiusura = st.sidebar.number_input(f"Prezzo {ticker} (Chiusura 22:00 IT)", value=float(prezzo_chiusura_api), step=0.10)
 else:
     prezzo_chiusura = prezzo_chiusura_api
-    st.sidebar.text_input("Prezzo QQQ (Chiusura 22:00 IT)", value=f"{prezzo_chiusura:.2f} $", disabled=True)
+    st.sidebar.text_input(f"Prezzo {ticker} (Chiusura 22:00 IT)", value=f"{prezzo_chiusura:.2f} $", disabled=True)
 
 # ==========================================
-# ESTRAZIONE E OVERRIDE MANUALE NQ
+# ESTRAZIONE E OVERRIDE MANUALE FUTURE (DINAMICO)
 # ==========================================
-tk_nq = yf.Ticker("NQU26.CME")
-nq_spot_reale = scarica_prezzo_spot("NQU26.CME")
+tk_future = yf.Ticker(ticker_future)
+future_spot_reale = scarica_prezzo_spot(ticker_future)
 
-# Recupera il settlement di chiusura NQ
-# Recupera la chiusura NQ esatta alle ore 22:00 IT (per allinearla al QQQ)
 try:
-    # Scarichiamo dati a 1 minuto per la massima precisione
-    storico_nq_1m = tk_nq.history(period="5d", interval="1m", prepost=True)
-    storico_nq_1m.index = storico_nq_1m.index.tz_convert('Europe/Rome')
-    
-    # Filtriamo gli ultimi 10 minuti di contrattazione prima della chiusura cash (21:50 - 21:59 IT)
-    candele_pre_chiusura = storico_nq_1m[(storico_nq_1m.index.hour == 21) & (storico_nq_1m.index.minute >= 50)]
-    
-    if not candele_pre_chiusura.empty:
-        # Raggruppiamo per giorno e prendiamo l'ultimo tick prima delle 22:00
-        chiusure_giornaliere_22 = candele_pre_chiusura.groupby(candele_pre_chiusura.index.date).last()
-        prezzo_nq_api = chiusure_giornaliere_22['Close'].iloc[-1]
+    storico_fut_1m = tk_future.history(period="5d", interval="1m", prepost=True)
+    if non storico_fut_1m.empty:
+        storico_fut_1m.index = storico_fut_1m.index.tz_convert('Europe/Rome')
+        candele_pre_chiusura = storico_fut_1m[(storico_fut_1m.index.hour == 21) & (storico_fut_1m.index.minute >= 50)]
+        if not candele_pre_chiusura.empty:
+            chiusure_giornaliere_22 = candele_pre_chiusura.groupby(candele_pre_chiusura.index.date).last()
+            prezzo_fut_api = chiusure_giornaliere_22['Close'].iloc[-1]
+        else:
+            prezzo_fut_api = future_spot_reale
     else:
-        prezzo_nq_api = nq_spot_reale
+        prezzo_fut_api = future_spot_reale
 except:
-    prezzo_nq_api = nq_spot_reale if nq_spot_reale is not None else 20000.0
+    prezzo_fut_api = future_spot_reale if future_spot_reale is not None else spot_price_reale
 
-usa_nq_manuale = st.sidebar.checkbox("Modifica Chiusura NQ a mano", value=False)
+usa_fut_manuale = st.sidebar.checkbox(f"Modifica Chiusura {nome_future} a mano", value=False)
 
-if usa_nq_manuale:
-    prezzo_future_man = st.sidebar.number_input("Prezzo Future NQ (Riferimento per Greche)", value=float(prezzo_nq_api), step=10.0)
+if usa_fut_manuale:
+    prezzo_future_man = st.sidebar.number_input(f"Prezzo Future {nome_future} (Riferimento per Greche)", value=float(prezzo_fut_api), step=10.0)
 else:
-    prezzo_future_man = prezzo_nq_api
-    st.sidebar.text_input("Prezzo Future NQ (Riferimento per Greche)", value=f"{prezzo_future_man:.2f}", disabled=True)
+    prezzo_future_man = prezzo_fut_api
+    st.sidebar.text_input(f"Prezzo Future {nome_future} (Riferimento per Greche)", value=f"{prezzo_future_man:.2f}", disabled=True)
 
-# Il moltiplicatore si adatta istantaneamente ai due valori (API o Manuali)
-ratio_esatto = prezzo_future_man / prezzo_chiusura
+# Moltiplicatore dinamico
+ratio_esatto = prezzo_future_man / prezzo_chiusura if prezzo_chiusura > 0 else 1.0
 st.sidebar.metric("Moltiplicatore Calcolato", value=f"{ratio_esatto:.4f}x")
 
 st.sidebar.markdown("---")
@@ -248,6 +278,7 @@ st.sidebar.subheader("🔄 Controllo Dati")
 if st.sidebar.button("Forza Aggiornamento Ora", use_container_width=True):
     st.cache_data.clear() 
     st.sidebar.success("✅ Richiesta nuovi dati inviata!")
+    st.rerun()
 
 stato_mercato = verifica_stato_mercato()
 tz_it = pytz.timezone('Europe/Rome')
@@ -257,36 +288,31 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("📊 Valori di Mercato")
 
 # =====================================================================
-# RECUPERO DATI IN TEMPO REALE (NASDAQ API + YAHOO NQ)
+# RECUPERO DATI IN TEMPO REALE E HTML BOX DINAMICO
 # =====================================================================
-# Tentativo API Nasdaq
-qqq_realtime_nasdaq = scarica_quote_nasdaq(ticker)
-if qqq_realtime_nasdaq is None:
-    # Fallback se l'API Nasdaq ti blocca
-    qqq_realtime_nasdaq = spot_price_reale 
+etf_realtime_nasdaq = scarica_quote_nasdaq(ticker)
+if etf_realtime_nasdaq is None:
+    etf_realtime_nasdaq = spot_price_reale 
 
-# Future NQ Real-time
-nq_realtime_yf = scarica_prezzo_spot("NQU26.CME")
-if nq_realtime_yf is None:
-    nq_realtime_yf = prezzo_future_man
+future_realtime_yf = scarica_prezzo_spot(ticker_future)
+if future_realtime_yf is None:
+    future_realtime_yf = prezzo_future_man
 
-# Costruzione blocco grafico stile Webull/TradingView in ora Italiana
 colore_bg = "#00C853" if "APERTO" in stato_mercato else "#131722"
 colore_text = "#FFFFFF" if "APERTO" in stato_mercato else "#B2B5BE"
 
 html_box = f"""
 <div style="background-color: {colore_bg}; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
     <h4 style="margin: 0; color: {colore_text}; font-size: 14px; opacity: 0.8;">{ticker} (Real-Time Nasdaq)</h4>
-    <h1 style="margin: 0; color: {colore_text}; font-size: 32px;">${qqq_realtime_nasdaq:.2f}</h1>
+    <h1 style="margin: 0; color: {colore_text}; font-size: 32px;">${etf_realtime_nasdaq:.2f}</h1>
     <hr style="border-color: {colore_text}; opacity: 0.2; margin: 10px 0;">
-    <h4 style="margin: 0; color: {colore_text}; font-size: 14px; opacity: 0.8;">NQ=F (Real-Time Future)</h4>
-    <h1 style="margin: 0; color: {colore_text}; font-size: 28px;">{nq_realtime_yf:.2f}</h1>
+    <h4 style="margin: 0; color: {colore_text}; font-size: 14px; opacity: 0.8;">{nome_future}=F (Real-Time Future)</h4>
+    <h1 style="margin: 0; color: {colore_text}; font-size: 28px;">{future_realtime_yf:.2f}</h1>
     <p style="margin: 10px 0 0 0; color: {colore_text}; font-size: 16px; font-weight: bold;">{stato_mercato}</p>
     <p style="margin: 2px 0 0 0; color: {colore_text}; font-size: 13px; opacity: 0.9;">{ora_it}</p>
 </div>
 """
 st.sidebar.markdown(html_box, unsafe_allow_html=True)
-
 scadenze_disponibili = list(tk.options)
 if not scadenze_disponibili:
     st.error(f"Nessuna data trovata per {ticker}.")
@@ -311,9 +337,8 @@ if pagina == "📊 Dashboard Grafica (GEX)":
     with col_f3:
         tipo_visualizzazione = st.radio("Visualizza Istogramma:", ["GEX (Gamma)", "DEX (Delta)"], horizontal=True)
     with col_f4:
-        st.markdown("<br>", unsafe_allow_html=True) # Spaziatura per allineamento
-        # NUOVA SPUNTA: Switch QQQ vs NQ
-        mostra_qqq = st.checkbox("🔄 Mostra livelli in QQQ", value=False, help="Visualizza asse Y, Call/Put Wall e HVL sul prezzo dell'ETF QQQ invece che sul Future NQ.")
+        st.markdown("<br>", unsafe_allow_html=True)
+        mostra_etf = st.checkbox(f"🔄 Mostra livelli in {ticker}", value=False, help=f"Visualizza asse Y e livelli sul prezzo dell'ETF {ticker} invece che sul Future {nome_future}.")
     
     # Integrazione VIX Live come motore per le Greche
     vix_live, vxn_live = get_vix_data()
@@ -340,14 +365,14 @@ if pagina == "📊 Dashboard Grafica (GEX)":
     # ==========================================
     struttura = []
     for _, riga in df_nasdaq_grafico.iterrows():
-        K = riga["strike"] # Questo è lo strike base in QQQ
+        K = riga["strike"]
         oi_call = riga.get("c_Openinterest", 0)
         oi_put = riga.get("p_Openinterest", 0)
         
         if oi_call > 0:
             d_c, _, gamma_c = calcola_greche_base(spot_price_reale, K, t_anno, iv_stimata)
             struttura.append({
-                "Strike_QQQ": K, 
+                "Strike_ETF": K, 
                 "Strike_Future": K * ratio_esatto, 
                 "GEX": gamma_c * oi_call * 100 * (spot_price_reale**2) * 0.01, 
                 "DEX": d_c * oi_call * 100 * spot_price_reale * 0.01
@@ -356,7 +381,7 @@ if pagina == "📊 Dashboard Grafica (GEX)":
         if oi_put > 0:
             _, d_p, gamma_p = calcola_greche_base(spot_price_reale, K, t_anno, iv_stimata)
             struttura.append({
-                "Strike_QQQ": K, 
+                "Strike_ETF": K, 
                 "Strike_Future": K * ratio_esatto, 
                 "GEX": -gamma_p * oi_put * 100 * (spot_price_reale**2) * 0.01, 
                 "DEX": d_p * oi_put * 100 * spot_price_reale * 0.01
@@ -364,6 +389,13 @@ if pagina == "📊 Dashboard Grafica (GEX)":
 
     df_raw = pd.DataFrame(struttura)
     if df_raw.empty: st.stop()
+
+    df = df_raw.groupby(["Strike_ETF", "Strike_Future"]).sum().reset_index()
+
+    # LOGICA TOGGLE DINAMICA
+    colonna_y = "Strike_ETF" if mostra_etf else "Strike_Future"
+    spot_riferimento = etf_realtime_nasdaq if mostra_etf else future_realtime_yf
+    nome_asset = ticker if mostra_etf else nome_future
 
     # Raggruppiamo preservando entrambe le colonne di prezzo
     df = df_raw.groupby(["Strike_QQQ", "Strike_Future"]).sum().reset_index()
@@ -431,7 +463,7 @@ if pagina == "📊 Dashboard Grafica (GEX)":
 
     help_gamma_flip = """
     **🟡 GAMMA FLIP (Punto di Flesso del Regime)**
-    * **Cos'è:** Il livello di "Zero Gamma", dove l'esposizione totale passa da positiva a negativa.
+    * **Cos'è:** Il livello di "Zero Gamma", dove l'esposizione totale passa da positiva a negativa o viceversa.
     * **Meccanica:** Sopra il livello i dealer assorbono volatilità (mercato tranquillo). Sotto il livello la amplificano (mercato tossico).
     * **Operatività:** È il filtro direzionale primario. Sotto il Gamma Flip le discese diventano veloci e verticali. Evitare long avventati.
     """
@@ -488,8 +520,16 @@ if pagina == "📊 Dashboard Grafica (GEX)":
 # =====================================================================
 # PAGINA 2: REPLICA SITO NASDAQ CON HIGHLIGHT SPOT
 # =====================================================================
-elif pagina == "🗄️ Database Ufficiale Nasdaq":
-    st.title(f"Invesco QQQ Trust, Series 1 ({ticker}) Option Chain")
+    elif pagina == "🗄️ Database Ufficiale":
+    # Mappa titoli completi per abbellire l'intestazione
+    NOMI_COMPLETI = {
+        "QQQ": "Invesco QQQ Trust, Series 1",
+        "SPY": "SPDR S&P 500 ETF Trust",
+        "IWM": "iShares Russell 2000 ETF",
+        "DIA": "SPDR Dow Jones Industrial Average ETF"
+    }
+    titolo_esteso = NOMI_COMPLETI.get(ticker, f"Asset: {ticker}")
+    st.title(f"{titolo_esteso} ({ticker}) Option Chain")
     
     col1, col2, col3, col4 = st.columns(4)
     with col1:
