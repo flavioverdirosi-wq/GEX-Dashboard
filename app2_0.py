@@ -276,10 +276,32 @@ st.sidebar.metric("Moltiplicatore Calcolato", value=f"{ratio_esatto:.4f}x")
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("🔄 Controllo Dati")
-if st.sidebar.button("Forza Aggiornamento Ora", use_container_width=True):
-    st.cache_data.clear() 
-    st.sidebar.success("✅ Richiesta nuovi dati inviata!")
-    st.rerun()
+
+col_r1, col_r2 = st.sidebar.columns([3, 1])
+with col_r1:
+    auto_refresh = st.checkbox("⏱️ Auto-Refresh (2 min)", value=True)
+with col_r2:
+    if st.button("Forza", use_container_width=True):
+        st.cache_data.clear() 
+        st.rerun()
+
+# Motore JavaScript nascosto per l'auto-reload
+if auto_refresh:
+    import streamlit.components.v1 as components
+    components.html(
+        """
+        <script>
+        setTimeout(function(){
+            window.parent.location.reload();
+        }, 120000); // 120000 ms = 2 minuti
+        </script>
+        """,
+        height=0, width=0
+    )
+
+stato_mercato = verifica_stato_mercato()
+tz_it = pytz.timezone('Europe/Rome')
+ora_it = datetime.datetime.now(tz_it).strftime("%d %b %Y - %H:%M IT")
 
 stato_mercato = verifica_stato_mercato()
 tz_it = pytz.timezone('Europe/Rome')
@@ -328,13 +350,14 @@ if pagina == "📊 Dashboard Grafica (GEX)":
     st.title("🎯 EOGA GEX & DEX Order Book")
     
     # =====================================================================
-    # DASHBOARD GRAFICA - FILTRI E TOGGLE DINAMICO ETF/FUTURE
+    # DASHBOARD GRAFICA - FILTRI E TOGGLE DINAMICO
     # =====================================================================
     col_f1, col_f2, col_f3, col_f4 = st.columns(4)
     with col_f1:
-        scadenza_sel = st.selectbox("Scadenza Analisi:", scadenze_disponibili)
+        usa_total_gex = st.checkbox("🌐 Calcola Total GEX (Aggregato)", value=False, help="Scarica e unisce le prossime 12 scadenze per simulare il posizionamento Istituzionale macro.")
+        scadenza_sel = st.selectbox("Scadenza Singola:", scadenze_disponibili, disabled=usa_total_gex)
     with col_f2:
-        filtro_percentuale = st.slider("Zoom Grafico (+/- % dal prezzo)", min_value=1, max_value=20, value=1)
+        filtro_percentuale = st.slider("Zoom Grafico (+/- % dal prezzo)", min_value=1, max_value=20, value=3)
     with col_f3:
         tipo_visualizzazione = st.radio("Visualizza Istogramma:", ["GEX (Gamma)", "DEX (Delta)"], horizontal=True)
     with col_f4:
@@ -346,53 +369,69 @@ if pagina == "📊 Dashboard Grafica (GEX)":
     iv_stimata = vix_live / 100.0
     st.info(f"⚙️ Motore Greche alimentato da VIX Live: {vix_live:.2f}% (Rif. VXN: {vxn_live:.2f}%)")
         
-    dati_estratti = ottieni_dati_intelligenti(ticker, scadenza_sel)
-    df_nasdaq_grafico = dati_estratti["df"]
-    orario_fetch = dati_estratti["ora"]
-    
-    if df_nasdaq_grafico.empty:
-        st.warning("⚠️ Dati non disponibili per questa scadenza dal Nasdaq.")
-        st.stop()
-        
-    st.caption(f"⏱️ **Ultimo cambiamento registrato nei dati della Chain:** {orario_fetch} (Ora Italiana)")
-
     oggi = datetime.date.today()
-    data_scad = datetime.datetime.strptime(scadenza_sel, "%Y-%m-%d").date()
-    giorni = (data_scad - oggi).days
-    t_anno = (0.5 / 365.0) if giorni <= 0 else (giorni / 365.0)
-
-    # ==========================================
-    # ELABORAZIONE STRUTTURA GEX E DEX (Doppio Strike)
-    # ==========================================
     struttura = []
-    for _, riga in df_nasdaq_grafico.iterrows():
-        K = riga["strike"]
-        oi_call = riga.get("c_Openinterest", 0)
-        oi_put = riga.get("p_Openinterest", 0)
+    
+    # ==========================================
+    # LOGICA DI ESTRAZIONE MULTIPLA (TOTAL GEX) vs SINGOLA
+    # ==========================================
+    # Limitiamo a 12 scadenze per non far collassare l'API del Nasdaq (Timeout)
+    scadenze_da_analizzare = scadenze_disponibili[:12] if usa_total_gex else [scadenza_sel]
+    
+    if usa_total_gex:
+        st.warning(f"⏳ Elaborazione Total GEX in corso ({len(scadenze_da_analizzare)} scadenze). Potrebbe richiedere 5-10 secondi...")
+
+    for scad in scadenze_da_analizzare:
+        dati_estratti = ottieni_dati_intelligenti(ticker, scad)
+        df_chain_temp = dati_estratti["df"]
         
-        if oi_call > 0:
-            d_c, _, gamma_c = calcola_greche_base(spot_price_reale, K, t_anno, iv_stimata)
-            struttura.append({
-                "Strike_ETF": K, 
-                "Strike_Future": K * ratio_esatto, 
-                "GEX": gamma_c * oi_call * 100 * (spot_price_reale**2) * 0.01, 
-                "DEX": d_c * oi_call * 100 * spot_price_reale * 0.01
-            })
+        if df_chain_temp.empty:
+            continue
             
-        if oi_put > 0:
-            _, d_p, gamma_p = calcola_greche_base(spot_price_reale, K, t_anno, iv_stimata)
-            struttura.append({
-                "Strike_ETF": K, 
-                "Strike_Future": K * ratio_esatto, 
-                "GEX": -gamma_p * oi_put * 100 * (spot_price_reale**2) * 0.01, 
-                "DEX": d_p * oi_put * 100 * spot_price_reale * 0.01
-            })
+        # Calcolo DTE specifico per QUESTA scadenza
+        data_scad = datetime.datetime.strptime(scad, "%Y-%m-%d").date()
+        giorni = (data_scad - oggi).days
+        t_anno = (0.5 / 365.0) if giorni <= 0 else (giorni / 365.0)
+
+        # Elaborazione Greche e Struttura
+        for _, riga in df_chain_temp.iterrows():
+            K = riga["strike"]
+            oi_call = riga.get("c_Openinterest", 0)
+            oi_put = riga.get("p_Openinterest", 0)
+            
+            if oi_call > 0:
+                d_c, _, gamma_c = calcola_greche_base(spot_price_reale, K, t_anno, iv_stimata)
+                struttura.append({
+                    "Strike_ETF": K, 
+                    "Strike_Future": K * ratio_esatto, 
+                    "GEX": gamma_c * oi_call * 100 * (spot_price_reale**2) * 0.01, 
+                    "DEX": d_c * oi_call * 100 * spot_price_reale * 0.01,
+                    "Call_OI": oi_call,
+                    "Put_OI": 0
+                })
+                
+            if oi_put > 0:
+                _, d_p, gamma_p = calcola_greche_base(spot_price_reale, K, t_anno, iv_stimata)
+                struttura.append({
+                    "Strike_ETF": K, 
+                    "Strike_Future": K * ratio_esatto, 
+                    "GEX": -gamma_p * oi_put * 100 * (spot_price_reale**2) * 0.01, 
+                    "DEX": d_p * oi_put * 100 * spot_price_reale * 0.01,
+                    "Call_OI": 0,
+                    "Put_OI": oi_put
+                })
 
     df_raw = pd.DataFrame(struttura)
-    if df_raw.empty: st.stop()
+    if df_raw.empty: 
+        st.error("Nessun dato estrapolato.")
+        st.stop()
 
-    # Raggruppiamo preservando entrambe le colonne di prezzo
+    # Raggruppiamo preservando entrambe le colonne di prezzo e sommando tutto il GEX di tutte le date
     df = df_raw.groupby(["Strike_ETF", "Strike_Future"]).sum().reset_index()
+
+    # ==========================================
+    # APPLICAZIONE LOGICA TOGGLE DINAMICA
+    # ==========================================
 
     # ==========================================
     # APPLICAZIONE LOGICA TOGGLE DINAMICA
