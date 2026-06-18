@@ -382,7 +382,8 @@ if pagina == "📊 Dashboard Grafica (GEX)":
             * *Tattica:* Resistenza forte. Valuta Take-Profit sui Long o ingressi Short.
             
             **🟡 HVL (FLIP POINT):** Lo "Zero Gamma". Separa il regime stabilizzatore da quello amplificatore.
-            * *Tattica:* Sotto=Volatilità alta (Short Gamma) Ogni movimento direzionale viene amplificato dal flusso di coperture dei Market Maker. Qui il "pavimento" (Put Wall) diventa l'unico livello di difesa prima di potenziali crash direzionali.; Sopra=Trend direzionale (Long Gamma) Il mercato è "intrappolato" in una morsa. La volatilità viene compressa e i movimenti diventano più prevedibili. Il Call Wall agisce come un magnete che attrae il prezzo.
+            * *Tattica:* Sotto=Volatilità alta (Short Gamma) Ogni movimento direzionale viene amplificato dal flusso di coperture dei Market Maker. Qui il "pavimento" (Put Wall) diventa l'unico livello di difesa prima di potenziali crash direzionali.
+            Sopra=Trend direzionale (Long Gamma) Il mercato è "intrappolato" in una morsa. La volatilità viene compressa e i movimenti diventano più prevedibili. Il Call Wall agisce come un magnete che attrae il prezzo.
             """)
         with col_t2:
             st.markdown("""
