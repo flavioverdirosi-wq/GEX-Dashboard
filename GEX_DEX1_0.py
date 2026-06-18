@@ -554,7 +554,7 @@ if pagina == "📊 Dashboard Grafica (GEX)":
         label=f"🟡 HVL (FLIP POINT) {nome_asset}", 
         value=f"{gamma_flip:.2f}",
         help="""HVL (Zero Gamma): Punto di equilibrio. 
-        Operatività: Sotto=Volatilità (Short Gamma); Sopra=Trend (Long Gamma)."""
+        Operatività: Sotto=Volatilità. Ogni movimento viene amplificato. (Short Gamma) ; Sopra=Trend. Il mercato è in una morsa e la volatilità è compressa. (Long Gamma)."""
     )
     
     c3.metric(
